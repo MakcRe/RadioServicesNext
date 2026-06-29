@@ -34,7 +34,12 @@ export interface LoggingConfig {
   retentionDays: number
 }
 
+export interface DbConfig {
+  path: string
+}
+
 export interface AppConfig {
+  db: DbConfig
   server: ServerConfig
   auth: AuthConfig
   ffmpeg: FfmpegConfig
@@ -44,6 +49,7 @@ export interface AppConfig {
 }
 
 const DEFAULTS: AppConfig = {
+  db: { path: 'data/radio.db' },
   server: { host: '0.0.0.0', port: 8000 },
   auth: { sourcePassword: 'hackme' },
   ffmpeg: {
@@ -90,6 +96,7 @@ function applyEnvOverrides(cfg: AppConfig): AppConfig {
   if (process.env.RADIO_PORT) cfg.server.port = Number(process.env.RADIO_PORT)
   if (process.env.RADIO_HOST) cfg.server.host = process.env.RADIO_HOST
   if (process.env.RADIO_SOURCE_PASSWORD) cfg.auth.sourcePassword = process.env.RADIO_SOURCE_PASSWORD
+  if (process.env.RADIO_DB_PATH) cfg.db.path = process.env.RADIO_DB_PATH
   return cfg
 }
 

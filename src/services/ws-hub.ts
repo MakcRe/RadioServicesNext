@@ -14,4 +14,8 @@ export class WsHub extends EventEmitter {
   emitEvent<K extends keyof EventMap>(event: K, data: EventMap[K]): void {
     this.emit(event, data)
   }
+
+  off<K extends keyof EventMap>(event: K, listener: (...args: any[]) => void): this {
+    return this.removeListener(event, listener)
+  }
 }

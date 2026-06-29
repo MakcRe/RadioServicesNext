@@ -6,6 +6,7 @@ import type { SourceSession } from './source-receiver.js'
 export interface ListenerConnection extends EventEmitter {
   write(chunk: Buffer): void
   readSnapshot(): Buffer
+  end(): void
 }
 
 class Listener extends PassThrough implements ListenerConnection {

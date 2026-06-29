@@ -114,6 +114,7 @@ export class FFmpegManager extends EventEmitter {
     try {
       this.downloading = true
       const config: AppConfig = {
+        db: { path: '' },
         server: { host: '0.0.0.0', port: 8000 },
         auth: { sourcePassword: '' },
         archive: { directory: '', segmentDurationSec: 3600, retentionDays: 7, minFreeSpaceMB: 500 },

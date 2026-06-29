@@ -77,6 +77,10 @@ export class Archiver {
     return this.proc !== null
   }
 
+  getArchiveDir(): string {
+    return this.opts.archiveDir
+  }
+
   async cleanup(): Promise<void> {
     try {
       const files = await readdir(this.opts.archiveDir)

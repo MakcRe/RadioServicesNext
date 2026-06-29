@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "node --import tsx/esm src/server.ts",
+    "dev:watch": "tsx watch src/server.ts",
     "build": "tsc --noEmit && esbuild --config esbuild.config.mjs",
     "build:web": "esbuild --config esbuild.config.mjs",
     "start": "node dist/server.js",

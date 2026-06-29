@@ -77,6 +77,7 @@ export async function buildApp(
   const wsHub = new WsHub()
 
   let sourceStream: PassThrough | null = null
+  const pushProcs: import('child_process').ChildProcess[] = []
 
   sourceReceiver.on('session-start', (session) => {
     sourceStream = new PassThrough()
@@ -173,25 +174,39 @@ export async function buildApp(
     ])
 
     proc.stderr?.on('data', (c) => logger.debug({ msg: c.toString() }, 'ffmpeg push'))
-    proc.on('exit', () => logger.info('source push exited'))
+    proc.on('exit', () => {
+      const idx = pushProcs.indexOf(proc)
+      if (idx >= 0) pushProcs.splice(idx, 1)
+      logger.info('source push exited')
+    })
+    pushProcs.push(proc)
 
     return { ok: true, displayName, pid: proc.pid }
   })
 
   app.post('/api/source/stop', async () => {
-    const { exec } = await import('child_process')
-    const { promisify } = await import('util')
-    const execAsync = promisify(exec)
-    try {
-      if (process.platform === 'win32') {
-        await execAsync('taskkill /F /IM ffmpeg.exe', { windowsHide: true })
-      } else {
-        await execAsync("pkill -f 'ffmpeg.*-content_type audio/mpeg'", {})
+    const snapshot = [...pushProcs]
+    let killed = 0
+    for (const proc of snapshot) {
+      try {
+        if (proc.exitCode === null && proc.signalCode === null) {
+          proc.kill('SIGTERM')
+          killed += 1
+        }
+      } catch {
+        // process already gone
       }
-    } catch {
-      // no matching process
     }
-    return { ok: true }
+    // wait 500ms then SIGKILL survivors
+    await new Promise((r) => setTimeout(r, 500))
+    for (const proc of snapshot) {
+      try {
+        if (proc.exitCode === null && proc.signalCode === null) {
+          proc.kill('SIGKILL')
+        }
+      } catch {}
+    }
+    return { ok: true, killed }
   })
 
   app.post('/api/source/upload', async (request, reply) => {

@@ -1,23 +1,11 @@
-import { $, $$, formatBytes, showToast } from '../ui.js'
+import { $, $$, showToast } from '../ui.js'
 import { api } from '../api-client.js'
 import { wsClient } from '../ws-client.js'
 
 interface StatusResponse {
-  source: {
-    connected: boolean
-    clientIp: string | null
-    bitrate: number
-    startedAt: number | null
-  }
-  stream: {
-    live: boolean
-    listeners: number
-    segments?: Array<{ name: string; size: number; createdAt: number }>
-  }
-  ffmpeg?: {
-    version: string
-    path: string
-  }
+  broadcaster?: { isLive: boolean }
+  listeners?: { count: number }
+  ffmpeg?: { available: boolean; source: string; version: string; path: string }
 }
 
 interface FfmpegStatusResponse {
@@ -115,35 +103,21 @@ function renderStatus(status: StatusResponse): void {
   const segmentList = $('#segment-list')
 
   if (liveText && liveContainer) {
-    const isLive = status.source?.connected && status.stream?.live
+    const isLive = Boolean(status.broadcaster?.isLive)
     liveText.textContent = isLive ? 'LIVE' : 'OFFLINE'
     liveContainer.className = `stat-value ${isLive ? 'text-success' : 'text-muted'}`
   }
 
   if (listenersEl) {
-    listenersEl.textContent = String(status.stream?.listeners ?? 0)
+    listenersEl.textContent = String(status.listeners?.count ?? 0)
   }
 
   if (bitrateEl) {
-    bitrateEl.textContent = status.source?.bitrate ? `${status.source.bitrate} kbps` : '--'
+    bitrateEl.textContent = '--'
   }
 
   if (segmentList) {
-    const segments = status.stream?.segments?.slice(0, 10) ?? []
-    if (segments.length === 0) {
-      segmentList.innerHTML = '<p class="text-muted">暂无切片</p>'
-    } else {
-      segmentList.innerHTML = segments
-        .map(
-          (seg) => `
-          <div class="segment-item">
-            <span class="segment-name">${seg.name}</span>
-            <span class="segment-size">${formatBytes(seg.size)}</span>
-          </div>
-        `
-        )
-        .join('')
-    }
+    segmentList.innerHTML = '<p class="text-muted">暂无切片</p>'
   }
 }
 

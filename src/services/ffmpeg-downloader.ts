@@ -1,12 +1,11 @@
 import { mkdir, rm, chmod, rename } from 'fs/promises'
-import { createWriteStream } from 'fs'
+import { createWriteStream, createReadStream } from 'fs'
 import { existsSync } from 'fs'
 import { spawn } from 'child_process'
 import { join, dirname } from 'path'
 import { pipeline } from 'stream/promises'
 import { Readable } from 'stream'
 import { createHash } from 'crypto'
-import { createReadStream } from 'fs'
 import type { AppConfig } from '../config.js'
 
 export type DownloadState =
@@ -20,6 +19,9 @@ export type DownloadState =
 export type ProgressCallback = (state: DownloadState) => void
 
 export async function verifySha256(archivePath: string, expectedSha256: string): Promise<void> {
+  if (!/^[a-fA-F0-9]{64}$/.test(expectedSha256)) {
+    throw new Error('invalid SHA256 format from remote file')
+  }
   return new Promise((resolve, reject) => {
     const hash = createHash('sha256')
     const stream = createReadStream(archivePath)

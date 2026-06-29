@@ -64,6 +64,11 @@ describe('verifySha256', () => {
       verifySha256('/nonexistent/path/archive.tar.xz', 'a'.repeat(64)),
     ).rejects.toThrow()
   })
+
+  it('throws when expected hash is not 64 hex characters', async () => {
+    const { verifySha256 } = await import('../../src/services/ffmpeg-downloader.js')
+    await expect(verifySha256('/any/path', 'not-a-valid-sha256')).rejects.toThrow(/invalid SHA256 format/i)
+  })
 })
 
 describe('buildDownloadUrl', () => {

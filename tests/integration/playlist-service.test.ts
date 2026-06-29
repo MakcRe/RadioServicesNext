@@ -52,6 +52,18 @@ describe('PlaylistService', () => {
     expect(pl.list()).toHaveLength(0)
   })
 
+  it('throws when adding a song whose uploaded file does not exist', () => {
+    const fileRepo = new UploadedFilesRepo(db)
+    const plRepo = new PlaylistRepo(db)
+    const pl = new PlaylistService(plRepo, fileRepo)
+
+    expect(() => pl.add({
+      filename: 'nonexistent.mp3',
+      display_name: 'Ghost',
+      duration_sec: null,
+    })).toThrow(/uploaded file not found/)
+  })
+
   it('reorders songs by id list', async () => {
     const fileRepo = new UploadedFilesRepo(db)
     const plRepo = new PlaylistRepo(db)
@@ -80,8 +92,7 @@ describe('UploadService', () => {
       uploadDir: join(tempDir, 'uploads'),
       maxFileSizeMB: 10,
       allowedExtensions: ['.mp3'],
-      ffmpegPath: '/bin/true',
-      fileRepo,
+fileRepo,
     })
 
     const buffer = Buffer.from('fake-mp3-content')
@@ -102,8 +113,7 @@ describe('UploadService', () => {
       uploadDir: join(tempDir, 'uploads'),
       maxFileSizeMB: 1,
       allowedExtensions: ['.mp3'],
-      ffmpegPath: '/bin/true',
-      fileRepo,
+fileRepo,
     })
 
     await expect(
@@ -121,8 +131,7 @@ describe('UploadService', () => {
       uploadDir: join(tempDir, 'uploads'),
       maxFileSizeMB: 10,
       allowedExtensions: ['.mp3'],
-      ffmpegPath: '/bin/true',
-      fileRepo,
+fileRepo,
     })
 
     await expect(

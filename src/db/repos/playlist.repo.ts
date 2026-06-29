@@ -58,4 +58,9 @@ export class PlaylistRepo {
     })
     tx(ids)
   }
+
+  maxPosition(): number {
+    const row = this.db.prepare('SELECT MAX(position) AS max FROM playlist').get() as { max: number | null }
+    return row.max ?? 0
+  }
 }

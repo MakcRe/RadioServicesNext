@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'fs/promises'
+import { mkdir, writeFile, rm } from 'fs/promises'
 import { join, extname } from 'path'
 import { randomUUID } from 'crypto'
 import type { UploadedFilesRepo } from '../db/repos/uploaded-files.repo.js'
@@ -7,7 +7,6 @@ export interface UploadServiceOptions {
   uploadDir: string
   maxFileSizeMB: number
   allowedExtensions: string[]
-  ffmpegPath: string
   fileRepo: UploadedFilesRepo
 }
 
@@ -50,12 +49,17 @@ export class UploadService {
       durationSec = null
     }
 
-    this.opts.fileRepo.insert({
-      filename,
-      original_name: input.originalName,
-      size_bytes: input.buffer.length,
-      duration_sec: durationSec,
-    })
+    try {
+      this.opts.fileRepo.insert({
+        filename,
+        original_name: input.originalName,
+        size_bytes: input.buffer.length,
+        duration_sec: durationSec,
+      })
+    } catch (err) {
+      await rm(filepath, { force: true }).catch(() => {})
+      throw err
+    }
 
     return {
       filename,

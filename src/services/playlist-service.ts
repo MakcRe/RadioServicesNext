@@ -17,10 +17,9 @@ export class PlaylistService {
     const file = this.fileRepo.getByFilename(input.filename)
     if (!file) throw new Error(`uploaded file not found: ${input.filename}`)
 
-    const existing = this.repo.list()
     const row = this.repo.insert({
       ...input,
-      position: existing.length + 1,
+      position: this.repo.maxPosition() + 1,
     })
     return row.id
   }
@@ -30,6 +29,8 @@ export class PlaylistService {
   }
 
   remove(id: number): void {
+    const existing = this.repo.getById(id)
+    if (!existing) throw new Error(`playlist entry not found: ${id}`)
     this.repo.delete(id)
     const remaining = this.repo.list().map((r) => r.id)
     if (remaining.length > 0) this.repo.reorder(remaining)

@@ -52,7 +52,7 @@ export class SourceReceiver extends EventEmitter {
       }
     )
 
-    app.put('/source', async (request, reply) => {
+    const handler = async (request: any, reply: any) => {
       const password = parseBasicAuth(request.headers.authorization ?? '')
       if (!password) {
         reply.header('WWW-Authenticate', 'Basic realm="radio"')
@@ -120,7 +120,11 @@ export class SourceReceiver extends EventEmitter {
       reply.raw.writeHead(200)
       reply.raw.end()
       return reply
-    })
+    }
+
+    app.put('/source', handler)
+    // Icecast 1.x compatible: ffmpeg defaults to POST
+    app.post('/source', handler)
   }
 
   getActiveSession(): SourceSession | null {

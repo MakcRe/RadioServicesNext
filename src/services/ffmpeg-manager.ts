@@ -43,6 +43,7 @@ export class FFmpegManager extends EventEmitter {
     version: null,
   }
   private downloading = false
+  private forceDownload = false
   private initializingPromise: Promise<FFmpegStatus> | null = null
 
   constructor(private opts: FFmpegManagerOptions) {
@@ -70,17 +71,19 @@ export class FFmpegManager extends EventEmitter {
       }
     }
 
-    // 2. Bundled
-    const bundled = join(this.opts.binRoot, '.versions', this.opts.version, this.binaryName())
-    if (existsSync(bundled)) {
-      if (await this.canExecute(bundled)) {
-        this.status = {
-          available: true,
-          source: 'bundled',
-          path: bundled,
-          version: await this.getVersion(bundled),
+    // 2. Bundled (skip if forceDownload is set to force re-download)
+    if (!this.forceDownload) {
+      const bundled = join(this.opts.binRoot, '.versions', this.opts.version, this.binaryName())
+      if (existsSync(bundled)) {
+        if (await this.canExecute(bundled)) {
+          this.status = {
+            available: true,
+            source: 'bundled',
+            path: bundled,
+            version: await this.getVersion(bundled),
+          }
+          return this.status
         }
-        return this.status
       }
     }
 
@@ -124,6 +127,7 @@ export class FFmpegManager extends EventEmitter {
         (state: DownloadState) => this.emit('download', state),
       )
       this.downloading = false
+      this.forceDownload = false
       this.status = {
         available: true,
         source: 'bundled',
@@ -141,7 +145,7 @@ export class FFmpegManager extends EventEmitter {
   }
 
   getStatus(): FFmpegStatus {
-    return this.status
+    return { ...this.status }
   }
 
   getPath(): string | null {
@@ -154,6 +158,7 @@ export class FFmpegManager extends EventEmitter {
 
   async triggerDownload(): Promise<void> {
     if (this.downloading) return
+    this.forceDownload = true
     await this.initialize()
   }
 
@@ -170,7 +175,7 @@ export class FFmpegManager extends EventEmitter {
         resolved = true
         resolve(v)
       }
-      proc.on('exit', (code) => finalize(code === 0))
+      proc.on('close', (code) => finalize(code === 0))
       proc.on('error', () => finalize(false))
       setTimeout(() => {
         try { proc.kill() } catch {}
@@ -184,7 +189,7 @@ export class FFmpegManager extends EventEmitter {
       const proc = spawn(path, ['-version'])
       let output = ''
       proc.stdout.on('data', (chunk) => (output += chunk.toString()))
-      proc.on('exit', () => {
+      proc.on('close', () => {
         const match = output.match(/ffmpeg version (\S+)/)
         resolve(match ? match[1] : null)
       })
@@ -198,7 +203,7 @@ export class FFmpegManager extends EventEmitter {
       const proc = spawn(cmd, [name])
       let output = ''
       proc.stdout.on('data', (chunk) => (output += chunk.toString()))
-      proc.on('exit', (code) => {
+      proc.on('close', (code) => {
         if (code === 0) {
           resolve(output.split('\n')[0].trim())
         } else {

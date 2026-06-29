@@ -84,4 +84,18 @@ describe('FFmpegManager', () => {
     expect(status.path).toBe(binFile)
     expect(status.available).toBe(true)
   })
+
+  it('getStatus returns a snapshot not the internal reference', async () => {
+    const bin = fakeBinaryPath()
+    const mgr = new FFmpegManager({
+      binRoot: join(tempDir, 'bin'),
+      version: '7.1',
+      downloadUrl: 'https://example.invalid/',
+      ffmpegPathOverride: bin,
+    })
+    await mgr.initialize()
+    const s1 = mgr.getStatus()
+    s1.available = false
+    expect(mgr.getStatus().available).toBe(true)
+  })
 })

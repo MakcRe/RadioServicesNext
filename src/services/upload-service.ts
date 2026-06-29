@@ -14,82 +14,70 @@ function detectMagicBytes(buffer: Buffer, ext: string): { ok: boolean; detected?
   const b0 = buffer[0]
   const b1 = buffer[1]
 
-  if (extLower === '.mp3') {
-    if (b0 === 0xff && (b1 & 0xe0) === 0xe0) {
-      return { ok: true, detected: 'MP3' }
-    }
-    return { ok: false, detected: 'unknown' }
-  }
+  switch (extLower) {
+    case '.mp3':
+      if (b0 === 0xff && (b1 & 0xe0) === 0xe0) {
+        return { ok: true, detected: 'MP3' }
+      }
+      return { ok: false, detected: 'unknown' }
 
-  if (extLower === '.aac') {
-    if (b0 === 0xff && (b1 === 0xf1 || b1 === 0xf9)) {
-      return { ok: true, detected: 'AAC' }
-    }
-    return { ok: false, detected: 'unknown' }
-  }
+    case '.aac':
+      if (b0 === 0xff && (b1 === 0xf1 || b1 === 0xf9)) {
+        return { ok: true, detected: 'AAC' }
+      }
+      return { ok: false, detected: 'unknown' }
 
-  if (extLower === '.flac') {
-    if (
-      buffer[0] === 0x66 &&
-      buffer[1] === 0x4c &&
-      buffer[2] === 0x61 &&
-      buffer[3] === 0x43
-    ) {
-      return { ok: true, detected: 'FLAC' }
-    }
-    return { ok: false, detected: 'unknown' }
-  }
-
-  if (extLower === '.wav') {
-    if (
-      buffer[0] === 0x52 &&
-      buffer[1] === 0x49 &&
-      buffer[2] === 0x46 &&
-      buffer[3] === 0x46 &&
-      buffer[8] === 0x57 &&
-      buffer[9] === 0x41 &&
-      buffer[10] === 0x56 &&
-      buffer[11] === 0x45
-    ) {
-      return { ok: true, detected: 'WAV' }
-    }
-    return { ok: false, detected: 'unknown' }
-  }
-
-  if (extLower === '.ogg') {
-    if (
-      buffer[0] === 0x4f &&
-      buffer[1] === 0x67 &&
-      buffer[2] === 0x67 &&
-      buffer[3] === 0x53
-    ) {
-      return { ok: true, detected: 'OGG' }
-    }
-    return { ok: false, detected: 'unknown' }
-  }
-
-  if (extLower === '.m4a') {
-    if (
-      buffer[4] === 0x66 &&
-      buffer[5] === 0x74 &&
-      buffer[6] === 0x79 &&
-      buffer[7] === 0x70
-    ) {
-      const brand = buffer.slice(8, 12).toString('ascii')
+    case '.flac':
       if (
-        brand === 'mp42' ||
-        brand === 'M4A ' ||
-        brand === 'isom' ||
-        brand === 'mp4a'
+        buffer[0] === 0x66 &&
+        buffer[1] === 0x4c &&
+        buffer[2] === 0x61 &&
+        buffer[3] === 0x43
+      ) {
+        return { ok: true, detected: 'FLAC' }
+      }
+      return { ok: false, detected: 'unknown' }
+
+    case '.wav':
+      if (
+        buffer[0] === 0x52 &&
+        buffer[1] === 0x49 &&
+        buffer[2] === 0x46 &&
+        buffer[3] === 0x46 &&
+        buffer[8] === 0x57 &&
+        buffer[9] === 0x41 &&
+        buffer[10] === 0x56 &&
+        buffer[11] === 0x45
+      ) {
+        return { ok: true, detected: 'WAV' }
+      }
+      return { ok: false, detected: 'unknown' }
+
+    case '.ogg':
+      if (
+        buffer[0] === 0x4f &&
+        buffer[1] === 0x67 &&
+        buffer[2] === 0x67 &&
+        buffer[3] === 0x53
+      ) {
+        return { ok: true, detected: 'OGG' }
+      }
+      return { ok: false, detected: 'unknown' }
+
+    case '.m4a':
+      if (
+        buffer[4] === 0x66 &&
+        buffer[5] === 0x74 &&
+        buffer[6] === 0x79 &&
+        buffer[7] === 0x70
       ) {
         return { ok: true, detected: 'M4A' }
       }
-      return { ok: true, detected: 'M4A' }
-    }
-    return { ok: false, detected: 'unknown' }
-  }
+      return { ok: false, detected: 'unknown' }
 
-  return { ok: true }
+    default:
+      throw new Error(`no magic bytes handler for extension: ${extLower}`)
+  }
 }
 
 export interface UploadServiceOptions {

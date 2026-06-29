@@ -142,6 +142,11 @@ pnpm dev
 | `server.host` | `"0.0.0.0"` | 监听地址 |
 | `server.port` | `8000` | 监听端口 |
 | `auth.sourcePassword` | `"hackme"` | 推流鉴权密码 |
+
+> **⚠️ SECURITY**: Always change `auth.sourcePassword` from the default value
+> (`hackme`) before deploying. The server logs a warning on startup if the
+> default is detected, but this is a fail-open check — production deployments
+> should never rely on the default.
 | `ffmpeg.version` | `"7.1"` | ffmpeg 版本 |
 | `archive.retentionDays` | `7` | 存档保留天数 |
 | `archive.minFreeSpaceMB` | `500` | 磁盘空间警戒线 |

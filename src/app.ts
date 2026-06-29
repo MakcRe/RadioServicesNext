@@ -5,7 +5,7 @@ import staticFiles from '@fastify/static'
 import { PassThrough } from 'stream'
 import { join } from 'path'
 import { mkdir } from 'fs/promises'
-import { loadConfig, type AppConfig } from './config.js'
+import { loadConfig, type AppConfig, warnIfDefaultPassword } from './config.js'
 import { createLogger } from './logger.js'
 import { initDb } from './db/sqlite.js'
 import { PlaylistRepo } from './db/repos/playlist.repo.js'
@@ -39,6 +39,7 @@ export async function buildApp(
 ): Promise<{ app: FastifyInstance; config: AppConfig }> {
   const config = loadConfig(configPath)
   const logger = createLogger(config.logging)
+  warnIfDefaultPassword(config, logger)
   await mkdir('data', { recursive: true })
   await mkdir(config.playlist.uploadDir, { recursive: true })
   await mkdir(config.archive.directory, { recursive: true })

@@ -1,5 +1,8 @@
 import { readFileSync, existsSync } from 'fs'
 import yaml from 'js-yaml'
+import type pino from 'pino'
+
+export const DEFAULT_SOURCE_PASSWORD = 'hackme'
 
 export interface ServerConfig {
   host: string
@@ -108,4 +111,14 @@ export function loadConfig(path: string): AppConfig {
   const parsed = (yaml.load(raw) as any) ?? {}
   const merged = deepMerge(DEFAULTS, parsed) as AppConfig
   return applyEnvOverrides(merged)
+}
+
+export function warnIfDefaultPassword(cfg: AppConfig, logger: pino.Logger): void {
+  if (cfg.auth.sourcePassword === DEFAULT_SOURCE_PASSWORD) {
+    logger.warn(
+      { defaultPassword: DEFAULT_SOURCE_PASSWORD },
+      'SECURITY WARNING: auth.sourcePassword is set to the default value. ' +
+        'Change it before deploying to production!',
+    )
+  }
 }

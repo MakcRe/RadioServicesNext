@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { warnIfDefaultPassword, DEFAULT_SOURCE_PASSWORD } from '../../src/config.js'
-import type { AppConfig } from '../src/config.js'
+import type { AppConfig } from '../../src/config.js'
 
 function makeCfg(password: string): AppConfig {
   return {

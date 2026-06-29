@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Radio Services 管理后台</title>
+  <link rel="stylesheet" href="/admin/app.css">
+</head>
+<body>
+  <div id="app">
+    <nav class="tab-nav">
+      <button data-tab="dashboard" class="tab-button active">状态</button>
+      <button data-tab="source" class="tab-button">推流</button>
+      <button data-tab="listeners" class="tab-button">听众</button>
+      <button data-tab="archive" class="tab-button">录制</button>
+      <button data-tab="ffmpeg" class="tab-button">ffmpeg</button>
+    </nav>
+
+    <main id="tab-content">
+      <div id="dashboard-view" class="tab-panel active"></div>
+      <div id="source-view" class="tab-panel"></div>
+      <div id="listeners-view" class="tab-panel"></div>
+      <div id="archive-view" class="tab-panel"></div>
+      <div id="config-view" class="tab-panel"></div>
+    </main>
+
+    <div id="toast-container"></div>
+  </div>
+
+  <footer id="app-footer">
+    <div class="footer-content">
+      <div class="footer-section">
+        <span class="footer-label">推流命令:</span>
+        <code id="stream-command">ffmpeg -re -i input.mp3 -c:a copy -f mp3 <span id="base-url">${location.protocol}//${location.host}</span>/stream</code>
+      </div>
+      <div class="footer-section">
+        <span id="disconnect-warning" class="warning-badge" style="display: none;">推流中断</span>
+      </div>
+    </div>
+  </footer>
+
+  <script type="module" src="/admin/app.js"></script>
+</body>
+</html>

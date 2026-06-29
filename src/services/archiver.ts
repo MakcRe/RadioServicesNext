@@ -41,12 +41,14 @@ export class Archiver {
       // ignore EPIPE
     })
 
-    this.proc.stderr?.on('data', (chunk) => {
-      const msg = chunk.toString()
-      if (msg.trim()) {
-        console.error('[archiver ffmpeg]', msg.trim())
-      }
-    })
+    if (this.proc.stderr) {
+      this.proc.stderr.on('data', (chunk) => {
+        const msg = chunk.toString()
+        if (msg.trim()) {
+          console.error('[archiver ffmpeg]', msg.trim())
+        }
+      })
+    }
 
     this.cleanupTimer = setInterval(() => {
       this.cleanup().catch((err) => console.error('[archiver cleanup]', err))
@@ -62,10 +64,12 @@ export class Archiver {
       this.cleanupTimer = null
     }
     const proc = this.proc
-    this.proc = null
     proc.stdin?.end()
     await new Promise<void>((resolve) => {
-      proc.on('exit', () => resolve())
+      proc.on('exit', () => {
+        if (this.proc === proc) this.proc = null
+        resolve()
+      })
     })
   }
 

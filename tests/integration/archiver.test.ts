@@ -80,4 +80,53 @@ describe('Archiver', () => {
     expect(existsSync(oldFile)).toBe(false)
     expect(existsSync(newFile)).toBe(true)
   })
+
+  it('stop() clears running state and stops subprocess', async () => {
+    const ffmpegPath = fakeFfmpeg()
+    const archiver = new Archiver({
+      ffmpegPath,
+      archiveDir,
+      segmentDurationSec: 3600,
+      retentionDays: 7,
+    })
+
+    const source = new PassThrough()
+    await archiver.start(source)
+    expect(archiver.isRunning()).toBe(true)
+
+    await archiver.stop()
+    expect(archiver.isRunning()).toBe(false)
+
+    // 二次 stop 应幂等无副作用
+    await archiver.stop()
+  })
+
+  it('list() returns sorted file metadata', async () => {
+    const archiver = new Archiver({
+      ffmpegPath: '/bin/true',
+      archiveDir,
+      segmentDurationSec: 3600,
+      retentionDays: 7,
+    })
+
+    mkdirSync(archiveDir, { recursive: true })
+
+    const f1 = join(archiveDir, '2026-06-29-10.mp3')
+    const f2 = join(archiveDir, '2026-06-29-11.mp3')
+    const f3 = join(archiveDir, '2026-06-29-12.mp3')
+    writeFileSync(f1, 'x')
+    writeFileSync(f2, 'y')
+    writeFileSync(f3, 'z')
+
+    const now = Date.now()
+    utimesSync(f1, new Date(now - 3000), new Date(now - 3000))
+    utimesSync(f2, new Date(now - 2000), new Date(now - 2000))
+    utimesSync(f3, new Date(now - 1000), new Date(now - 1000))
+
+    const list = await archiver.list()
+    expect(list).toHaveLength(3)
+    expect(list[0].filename).toBe('2026-06-29-12.mp3')
+    expect(list[1].filename).toBe('2026-06-29-11.mp3')
+    expect(list[2].filename).toBe('2026-06-29-10.mp3')
+  })
 })

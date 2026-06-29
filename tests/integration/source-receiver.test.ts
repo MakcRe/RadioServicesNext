@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import Fastify from 'fastify'
 import request from 'supertest'
-import { SourceReceiver } from '../../src/services/source-receiver.js'
+import { SourceReceiver, SourceSession } from '../../src/services/source-receiver.js'
 
 let app: ReturnType<typeof Fastify>
 let receiver: SourceReceiver
@@ -65,5 +65,25 @@ describe('PUT /source', () => {
       .set('Authorization', 'Basic ' + Buffer.from('source:wrong').toString('base64'))
       .send(Buffer.from([]))
     expect(res.status).toBe(401)
+  })
+
+  it('session-start event contains correct metadata', async () => {
+    let capturedSession: SourceSession | null = null
+    receiver.once('session-start', (s) => { capturedSession = s })
+
+    await request(app.server)
+      .put('/source')
+      .set('Authorization', 'Basic ' + Buffer.from('source:hackme').toString('base64'))
+      .set('Content-Type', 'audio/mpeg')
+      .set('User-Agent', 'Lavf/60.0.0')
+      .set('Ice-Name', 'My Cool Station')
+      .set('Ice-Genre', 'Jazz')
+      .send(Buffer.from([0xff, 0xfb]))
+
+    expect(capturedSession).not.toBeNull()
+    expect(capturedSession!.sourceType).toBe('ffmpeg')
+    expect(capturedSession!.metadata?.name).toBe('My Cool Station')
+    expect(capturedSession!.metadata?.genre).toBe('Jazz')
+    expect(capturedSession!.mountpoint).toBe('/source')
   })
 })

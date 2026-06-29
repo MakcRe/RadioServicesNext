@@ -89,7 +89,6 @@ export class SourceReceiver extends EventEmitter {
 
       this.activeSession = session
       this.activeSocket = request.raw.socket
-      this.emit('session-start', session)
 
       reply.header('icy-name', session.metadata?.name ?? 'radioServices')
       reply.header('icy-public', '1')
@@ -104,12 +103,18 @@ export class SourceReceiver extends EventEmitter {
         }
       }
       request.raw.on('data', (chunk: Buffer) => {
-        if (this.opts.onData) this.opts.onData(chunk, session)
+        try {
+          if (this.opts.onData) this.opts.onData(chunk, session)
+        } catch (err) {
+          this.emit('error', err)
+        }
         this.emit('data', chunk, session)
       })
       request.raw.on('end', cleanup)
       request.raw.on('close', cleanup)
       request.raw.on('error', cleanup)
+
+      this.emit('session-start', session)
 
       reply.raw.setHeader('Content-Type', 'audio/mpeg')
       reply.raw.writeHead(200)

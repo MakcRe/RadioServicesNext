@@ -5,13 +5,22 @@
 
 ## 当前状态
 
-**设计阶段**：✅ 完成
-- `docs/superpowers/specs/2026-06-29-radio-services-design.md`（830 行）
-- `docs/superpowers/plans/2026-06-29-radio-services.md`（4826 行）
+**v1 全部完成** ✅
 
-**已完成 commits（15 个）**：
+设计规格：`docs/superpowers/specs/2026-06-29-radio-services-design.md`（830 行）
+实施计划：`docs/superpowers/plans/2026-06-29-radio-services.md`（4826 行）
+
+### 已完成 commits（21 个）
 ```
-18c86ef feat: WS event hub                      ← 最新 HEAD（Task 11）
+dc4dc26 fix(source): accept POST as well as PUT on /source  ← 最新 HEAD（收尾 E2E 发现）
+85ae72c chore: cleanup before release
+1daac48 docs: README + final docs
+b4de420 test: integration + E2E tests
+6d63e1b feat: source, archive, listeners, ffmpeg-panel views
+5c0831e feat: admin web UI (skeleton + dashboard)
+4d6f73c feat: fastify app with all REST routes + WS
+5662073 docs: update HANDOFF for next session (Task 12 ready for review)
+18c86ef feat: WS event hub
 5177ad7 fix(playlist+upload): existence checks, atomic write+insert, race fix
 8c22a36 feat: upload service + playlist service
 b782e93 fix(manager): atomic single-INSERT, normalize device_type to spec literal
@@ -25,86 +34,54 @@ ee6980f feat: archiver with segment + cleanup
 4327369 fix(manager): snapshot getStatus, real triggerDownload, close listeners
 41c325a fix(manager): narrow sysCandidates type per TS strict mode
 5412b28 feat: ffmpeg manager with bundled/system/missing fallback
-f181a29 fix(downloader): dedupe import + validate SHA256 format
+f181a19 fix(downloader): dedupe import + validate SHA256 format
 285a492 fix(downloader): add SHA256 verification per design spec
 d80a8dc feat: config loading + pino logger
 72d47a0 chore: scaffold TypeScript + Fastify project
 bdf1556 docs: design spec + implementation plan
 ```
 
-**测试**：56 passed (11 test files) · `pnpm typecheck` exit 0
+**测试**：65 passed (12 test files) · `pnpm typecheck` exit 0
 
-**已实现 + 完整走完两阶段审查**：
-- Task 0: 项目骨架
-- Task 1: 配置加载 + pino logger
-- Task 2: SQLite schema + 三个 repo
-- Task 3: Ring Buffer
-- Task 4: FFmpegDownloader（含 SHA256 校验修复）
-- Task 5: FFmpegManager（spec+code review + 4 修复）
-- Task 6: SourceReceiver（spec PASS, code review FAIL, 4 修复）
-- Task 7: Broadcaster（review FAIL, 1 Critical 修复）
-- Task 8: Archiver（review FAIL, 1 Critical 修复）
-- Task 9: ListenerManager（review FAIL, 2 修复）
-- Task 10: Upload + Playlist Service（review FAIL, 2 Critical + 2 Important 修复）
-- Task 11: WsHub
+**Tasks 0-16 全部完成 + 完整走完两阶段审查**
 
-**Task 12 状态（当前会话起点）**：
-- 8 个 routes + app.ts 重写 已**全部写入磁盘**
-- 修改的文件：app.ts, config.ts (新增 db.path), server.ts, broadcaster.ts (加 end()), ws-hub.ts (加 off()), package.json (加 dev:watch)
-- 但：**未经规格审查 + 代码质量审查 + 未 commit**
-- typecheck 干净，56 tests 仍然全 pass
-- subagent 中途被截断，我手动修复了 app.ts 一处 syntax 错误
+## 收尾发现的问题（v1 范围外，待 v1.1 处理）
 
-## 剩余任务
+### A. 安全性问题（来自最终代码审查）
 
-按依赖顺序：
-- Task 12: Fastify app + 全部 REST routes ← **下一个待办（代码已写，待审查+commit）**
-- Task 13: 前端骨架 (HTML + TS + esbuild)
-- Task 14: 4 个 view
-- Task 15: 集成 + E2E tests
-- Task 16: README
+1. **`/api/config` 暴露 sourcePassword** — `src/routes/config.ts:12` 返回完整配置对象，含明文密码
+   - 修复：过滤敏感字段再返回
+2. **上传未验证 MIME type** — `src/services/upload-service.ts` 只检查扩展名
+   - 修复：用 `file-type` 等库检查 magic bytes
+3. **`pkill` 误杀风险** — `src/app.ts:188` 用 `pkill -f` 可能误杀其他进程
+   - 修复：维护 push PID 列表，精确 kill
+4. **推流密码硬编码** — 默认 `"hackme"` 在多处出现
+   - 修复：启动检测默认值并警告
 
-## 执行方式
+### B. 功能/UX 问题
 
-`subagent-driven-development` 技能：
-- 每个任务一个全新子代理
-- 两阶段审查：规格合规 → 代码质量
-- 每个子代理必须提供完整任务文本（不要让它读 plan 文件）
-- 审查未通过不进入下一个任务
-- 串行执行，不要并行分派多个实现子代理
+5. **`updateStatusIndicator` 前端无效** — `src/web/main.ts` 检查 `source.connected`，但后端 `/api/status` 不返回该字段
+6. **`public/index.html` 听众落地页缺失** — README 提到但未实现
+7. **`/stream` 无源时立即 503** — 应该等待 source 启动而非拒绝（取决于产品决策）
 
-## 关键环境约束
+### C. 代码组织
 
-1. **沙盒 hooks 限制**：`.git/hooks/` 写入被阻止。每个 git commit 必须用：
-   ```bash
-   git -c core.hooksPath=/dev/null commit -m "..."
-   ```
-   或者在 Shell 工具的 `required_permissions: ["all"]` 模式下运行 git 命令。
+8. **`escapeHtml` 在 4 个 view 文件中重复定义** — 应抽取到 `ui.ts`
+9. **前端类型定义缺失** — 大量 `any`
+10. **路由参数 `Number(id)` 宽松** — 无效字符串返回 NaN
 
-2. **依赖安装**：所有 package.json 中的依赖已经在 task 0 一次性安装完毕。后续任务无需再次 `pnpm install`，除非新增依赖。
-
-3. **TypeScript ESM**：项目使用 `"type": "module"`，所有 import 必须带 `.js` 后缀（即使源文件是 `.ts`）。
-
-4. **task 12 特殊**：buildApp 现在返回 `{ app, config }` 而不只是 `app`。`server.ts` 已适配。如果其他调用 buildApp 的地方也需要更新（tests/server.test.ts 等），注意签名变更。
-
-## 交接示例提示词
-
-新对话里给 AI 的提示词：
+## E2E 验证结果（本次会话完成）
 
 ```
-我在推进 radioServices 项目（本地优先 Internet Radio 服务器）。
-
-工作区：/Users/lines/Developer/radioServices
-当前状态：见 docs/superpowers/HANDOFF.md
-
-设计规格：docs/superpowers/specs/2026-06-29-radio-services-design.md
-实施计划：docs/superpowers/plans/2026-06-29-radio-services.md
-
-请使用 subagent-driven-development 技能，从下一个待办任务开始执行。
-每个任务 DONE → 规格审查 → 代码审查 → 修复（如有）→ 通过 → 标完成。
-
-注意：git commit 时若遇到 hooks 问题，用 `git -c core.hooksPath=/dev/null commit ...`。
+✅ 服务启动 (系统 ffmpeg 8.1.1 fallback)
+✅ GET /api/status / ffmpeg/status / listeners / playlist / archive
+✅ GET /admin/index.html + /admin/app.js (200)
+✅ GET /stream + /live.mp3 无源 → 503
+✅ POST /source ffmpeg 推流 → 200
+✅ Listener GET /stream 收到 4642 字节 MP3（含 ID3 + MP3 frame）
 ```
+
+发现并修复：**Icecast POST 兼容 bug**（dc4dc26）— ffmpeg 默认用 POST，但 SourceReceiver 只注册 PUT。
 
 ## 当前会话之前的对话 ID
 

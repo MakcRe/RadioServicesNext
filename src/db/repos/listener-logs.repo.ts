@@ -64,4 +64,16 @@ export class ListenerLogsRepo {
     const totalRow = this.db.prepare('SELECT COUNT(*) AS c FROM listener_logs').get() as { c: number }
     return { rows, total: totalRow.c }
   }
+
+  update(id: number, fields: Partial<{
+    device_type: string | null
+    device_os: string | null
+    device_browser: string | null
+  }>): void {
+    const keys = Object.keys(fields)
+    if (keys.length === 0) return
+    const sets = keys.map((k) => `${k} = ?`).join(', ')
+    const values = keys.map((k) => (fields as Record<string, unknown>)[k])
+    this.db.prepare(`UPDATE listener_logs SET ${sets} WHERE id = ?`).run(...values, id)
+  }
 }

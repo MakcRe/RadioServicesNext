@@ -25,8 +25,9 @@ async function loadArchive(): Promise<void> {
   if (!container) return
 
   try {
-    const archives = await api.listArchive()
-    if (!archives || archives.length === 0) {
+    const response = await api.listArchive()
+    const archives = response?.files ?? []
+    if (archives.length === 0) {
       container.innerHTML = '<p class="text-muted">暂无录制回放</p>'
       return
     }
@@ -34,7 +35,7 @@ async function loadArchive(): Promise<void> {
     // Group by date
     const grouped: Record<string, typeof archives> = {}
     for (const item of archives) {
-      const date = new Date(item.createdAt * 1000).toLocaleDateString('zh-CN', {
+      const date = new Date(item.mtime).toLocaleDateString('zh-CN', {
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
@@ -54,18 +55,18 @@ async function loadArchive(): Promise<void> {
             ${items
               .map(
                 (item: any) => `
-              <div class="archive-item" data-name="${escapeHtml(item.name)}">
+              <div class="archive-item" data-name="${escapeHtml(item.filename)}">
                 <div class="archive-info">
-                  <span class="archive-name">${escapeHtml(item.name)}</span>
-                  <span class="archive-meta">${formatBytes(item.size)}</span>
-                  <span class="archive-meta">${new Date(item.createdAt * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</span>
+                  <span class="archive-name">${escapeHtml(item.filename)}</span>
+                  <span class="archive-meta">${formatBytes(item.sizeBytes)}</span>
+                  <span class="archive-meta">${new Date(item.mtime).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
                 <div class="archive-actions">
                   <audio controls class="archive-audio">
-                    <source src="/archive/${escapeHtml(item.name)}" type="audio/mpeg">
+                    <source src="/archive/${escapeHtml(item.filename)}" type="audio/mpeg">
                     您的浏览器不支持音频播放
                   </audio>
-                  <a href="/archive/${escapeHtml(item.name)}" download class="btn-small">下载</a>
+                  <a href="/archive/${escapeHtml(item.filename)}" download class="btn-small">下载</a>
                 </div>
               </div>
             `

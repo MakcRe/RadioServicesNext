@@ -434,3 +434,187 @@ input:focus, select:focus, textarea:focus {
   background: var(--border);
   color: var(--text);
 }
+
+/* Upload zone */
+.upload-zone {
+  border: 2px dashed var(--border);
+  border-radius: 8px;
+  padding: 32px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: var(--bg);
+}
+
+.upload-zone:hover,
+.upload-zone.drag-over {
+  border-color: var(--accent);
+  background: rgba(88, 166, 255, 0.05);
+}
+
+.upload-zone p {
+  margin: 4px 0;
+  color: var(--text);
+}
+
+.upload-zone p.text-muted {
+  font-size: 12px;
+}
+
+.upload-progress {
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+/* Small button (table actions) */
+.btn-small {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  margin-right: 4px;
+  border: none;
+  border-radius: 4px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-small:hover {
+  background: var(--accent-hover);
+}
+
+.btn-small.btn-danger {
+  background: var(--error);
+}
+
+.btn-small.btn-danger:hover {
+  background: #ff6b63;
+}
+
+.btn-small:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Status indicator dot */
+.status-indicator {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.status-indicator.active {
+  background: var(--success);
+  box-shadow: 0 0 6px rgba(63, 185, 80, 0.6);
+}
+
+.status-indicator.inactive {
+  background: var(--text-dim);
+}
+
+.status-indicator.error {
+  background: var(--error);
+}
+
+/* Pagination */
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+/* Archive list */
+.archive-date-group {
+  margin-bottom: 20px;
+}
+
+.archive-date-title {
+  font-size: 14px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.archive-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.archive-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--bg);
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.archive-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.archive-name {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.archive-meta {
+  color: var(--text-dim);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.archive-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.archive-audio {
+  height: 32px;
+  max-width: 320px;
+}
+
+/* FFmpeg download progress */
+.download-progress {
+  margin-top: 12px;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  background: var(--bg);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
+code {
+  background: var(--bg);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}

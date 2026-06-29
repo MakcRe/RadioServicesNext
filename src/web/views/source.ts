@@ -106,8 +106,9 @@ async function loadFiles(): Promise<void> {
   if (!container) return
 
   try {
-    const files = await api.listFiles()
-    if (!files || files.length === 0) {
+    const response = await api.listFiles()
+    const files = response?.files ?? []
+    if (files.length === 0) {
       container.innerHTML = '<p class="text-muted">暂无已上传文件</p>'
       return
     }
@@ -127,9 +128,9 @@ async function loadFiles(): Promise<void> {
             .map(
               (f: any) => `
             <tr data-id="${f.id}">
-              <td>${escapeHtml(f.originalName || f.filename)}</td>
-              <td>${formatBytes(f.size)}</td>
-              <td>${f.duration ? formatDuration(f.duration) : '--'}</td>
+              <td>${escapeHtml(f.original_name || f.filename)}</td>
+              <td>${formatBytes(f.size_bytes)}</td>
+              <td>${f.duration_sec ? formatDuration(f.duration_sec) : '--'}</td>
               <td>
                 <button class="btn-small play-btn" data-type="file" data-id="${f.id}">推流</button>
                 <button class="btn-small add-playlist-btn" data-id="${f.id}" data-filename="${escapeHtml(f.filename)}">加到歌单</button>
@@ -196,8 +197,9 @@ async function loadPlaylist(): Promise<void> {
   if (!container) return
 
   try {
-    const items = await api.listPlaylist()
-    if (!items || items.length === 0) {
+    const response = await api.listPlaylist()
+    const items = response?.items ?? []
+    if (items.length === 0) {
       container.innerHTML = '<p class="text-muted">歌单为空</p>'
       return
     }
@@ -218,8 +220,8 @@ async function loadPlaylist(): Promise<void> {
               (item: any, index: number) => `
             <tr data-id="${item.id}">
               <td>${index + 1}</td>
-              <td>${escapeHtml(item.displayName || item.filename)}</td>
-              <td>${item.durationSec ? formatDuration(item.durationSec) : '--'}</td>
+              <td>${escapeHtml(item.display_name || item.filename)}</td>
+              <td>${item.duration_sec ? formatDuration(item.duration_sec) : '--'}</td>
               <td>
                 <button class="btn-small play-btn" data-type="playlist" data-id="${item.id}">推流</button>
                 <button class="btn-small btn-danger delete-btn" data-id="${item.id}">移除</button>

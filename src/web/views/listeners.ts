@@ -51,8 +51,9 @@ async function loadCurrentListeners(): Promise<void> {
   if (!container) return
 
   try {
-    const listeners = await api.currentListeners()
-    if (!listeners || listeners.length === 0) {
+    const response = await api.currentListeners()
+    const listeners = response?.listeners ?? []
+    if (listeners.length === 0) {
       container.innerHTML = '<p class="text-muted">当前无听众在线</p>'
       return
     }
@@ -71,9 +72,9 @@ async function loadCurrentListeners(): Promise<void> {
             .map(
               (l: any) => `
             <tr>
-              <td class="text-mono">${escapeHtml(l.clientIp || '未知')}</td>
-              <td>${l.connectedAt ? formatTimeAgo(l.connectedAt) : '--'}</td>
-              <td class="text-muted">${escapeHtml(l.userAgent || '--')}</td>
+              <td class="text-mono">${escapeHtml(l.ip || '未知')}</td>
+              <td>${l.connected_at ? formatTimeAgo(l.connected_at) : '--'}</td>
+              <td class="text-muted">${escapeHtml(l.user_agent || '--')}</td>
             </tr>
           `
             )
@@ -98,8 +99,9 @@ async function loadHistory(page: number): Promise<void> {
 
   try {
     const result = await api.historyListeners(page)
-    const history = result.history || result.items || []
-    const totalPages = result.totalPages || 1
+    const history = result?.rows ?? []
+    const total = result?.total ?? 0
+    const totalPages = Math.max(1, Math.ceil(total / (result?.pageSize ?? 50)))
 
     if (!history || history.length === 0) {
       container.innerHTML = '<p class="text-muted">暂无历史记录</p>'
@@ -122,11 +124,11 @@ async function loadHistory(page: number): Promise<void> {
             .map(
               (l: any) => `
             <tr>
-              <td class="text-mono">${escapeHtml(l.clientIp || '未知')}</td>
-              <td>${l.joinedAt ? new Date(l.joinedAt).toLocaleString('zh-CN') : '--'}</td>
-              <td>${l.leftAt ? new Date(l.leftAt).toLocaleString('zh-CN') : '在线'}</td>
-              <td>${l.durationSec ? formatDuration(l.durationSec) : '--'}</td>
-              <td class="text-muted">${escapeHtml(l.userAgent || '--')}</td>
+              <td class="text-mono">${escapeHtml(l.ip || '未知')}</td>
+              <td>${l.connected_at ? new Date(l.connected_at).toLocaleString('zh-CN') : '--'}</td>
+              <td>${l.disconnected_at ? new Date(l.disconnected_at).toLocaleString('zh-CN') : '在线'}</td>
+              <td>${l.duration_sec ? formatDuration(l.duration_sec) : '--'}</td>
+              <td class="text-muted">${escapeHtml(l.user_agent || '--')}</td>
             </tr>
           `
             )

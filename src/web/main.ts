@@ -2,6 +2,10 @@ import { $, $$ } from './ui.js'
 import { wsClient } from './ws-client.js'
 import { api } from './api-client.js'
 import { initDashboard } from './views/dashboard.js'
+import { renderSource } from './views/source.js'
+import { renderListeners } from './views/listeners.js'
+import { renderArchive } from './views/archive.js'
+import { renderFfmpegPanel } from './views/ffmpeg-panel.js'
 
 type TabId = 'dashboard' | 'source' | 'listeners' | 'archive' | 'ffmpeg'
 
@@ -22,102 +26,61 @@ function initTabs(): void {
       if (targetPanel) {
         targetPanel.classList.add('active')
       }
+
+      void initView(tabId)
     })
   })
-}
-
-function initView(tabId: TabId): void {
-  switch (tabId) {
-    case 'dashboard':
-      initDashboard()
-      break
-    case 'source':
-      initSourceView()
-      break
-    case 'listeners':
-      initListenersView()
-      break
-    case 'archive':
-      initArchiveView()
-      break
-    case 'ffmpeg':
-      initConfigView()
-      break
-  }
 }
 
 function initSourceView(): void {
   const container = $('#source-view')
   if (!container) return
-
-  container.innerHTML = `
-    <div class="card">
-      <div class="card-title">推流设置</div>
-      <p class="text-muted">推流地址：<code class="text-mono">${location.protocol}//${location.host}/stream</code></p>
-      <p class="text-muted mt-2">当前状态：<span id="source-status-badge">--</span></p>
-    </div>
-  `
-
-  wsClient.on('source-start', () => {
-    const badge = $('#source-status-badge')
-    if (badge) {
-      badge.innerHTML = '<span class="status-badge active">已连接</span>'
-    }
-  })
-
-  wsClient.on('source-end', () => {
-    const badge = $('#source-status-badge')
-    if (badge) {
-      badge.innerHTML = '<span class="status-badge inactive">未连接</span>'
-    }
-  })
+  void renderSource(container)
 }
 
 function initListenersView(): void {
   const container = $('#listeners-view')
   if (!container) return
-
-  container.innerHTML = `
-    <div class="card">
-      <div class="card-title">当前听众</div>
-      <div id="current-listeners">
-        <p class="text-muted">加载中...</p>
-      </div>
-    </div>
-  `
+  void renderListeners(container)
 }
 
 function initArchiveView(): void {
   const container = $('#archive-view')
   if (!container) return
-
-  container.innerHTML = `
-    <div class="card">
-      <div class="card-title">录制文件</div>
-      <div id="archive-list">
-        <p class="text-muted">加载中...</p>
-      </div>
-    </div>
-  `
+  void renderArchive(container)
 }
 
 function initConfigView(): void {
-  const container = $('#config-view')
+  const container = $('#ffmpeg-view')
   if (!container) return
+  void renderFfmpegPanel(container)
+}
 
-  container.innerHTML = `
-    <div class="card">
-      <div class="card-title">系统配置</div>
-      <p class="text-muted">配置界面开发中...</p>
-    </div>
-  `
+async function initView(tabId: TabId): Promise<void> {
+  switch (tabId) {
+    case 'dashboard':
+      initDashboard()
+      break
+    case 'source':
+      await initSourceView()
+      break
+    case 'listeners':
+      await initListenersView()
+      break
+    case 'archive':
+      await initArchiveView()
+      break
+    case 'ffmpeg':
+      await initConfigView()
+      break
+  }
 }
 
 function main(): void {
   initTabs()
 
   const defaultTab = 'dashboard'
-  initView(defaultTab)
+  void initView(defaultTab)
 
   wsClient.connect()
 

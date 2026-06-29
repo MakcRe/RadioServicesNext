@@ -1,5 +1,70 @@
 import { describe, it, expect } from 'vitest'
 import { buildDownloadUrl } from '../../src/services/ffmpeg-downloader.js'
+import { createHash } from 'crypto'
+import { mkdir, writeFile, rm } from 'fs/promises'
+import { join, dirname } from 'path'
+import { mkdtemp } from 'fs/promises'
+import { tmpdir } from 'os'
+
+describe('verifySha256', () => {
+  async function makeTempFile(contents: Buffer): Promise<string> {
+    const tmp = await mkdtemp(join(tmpdir(), 'sha256-test-'))
+    const filePath = join(tmp, 'archive.bin')
+    await writeFile(filePath, contents)
+    return filePath
+  }
+
+  function sha256Of(data: Buffer): string {
+    return createHash('sha256').update(data).digest('hex')
+  }
+
+  it('passes when hash matches', async () => {
+    const data = Buffer.alloc(1024)
+    data.write('hello world\n', 0, 'utf8')
+    const expected = sha256Of(data)
+    const filePath = await makeTempFile(data)
+    try {
+      const { verifySha256 } = await import('../../src/services/ffmpeg-downloader.js')
+      await expect(verifySha256(filePath, expected)).resolves.toBeUndefined()
+    } finally {
+      await rm(dirname(filePath), { recursive: true, force: true })
+    }
+  })
+
+  it('passes case-insensitively', async () => {
+    const data = Buffer.alloc(1024)
+    data.write('test data\n', 0, 'utf8')
+    const lower = sha256Of(data)
+    const upper = lower.toUpperCase()
+    const filePath = await makeTempFile(data)
+    try {
+      const { verifySha256 } = await import('../../src/services/ffmpeg-downloader.js')
+      await expect(verifySha256(filePath, upper)).resolves.toBeUndefined()
+    } finally {
+      await rm(dirname(filePath), { recursive: true, force: true })
+    }
+  })
+
+  it('throws when hash does not match', async () => {
+    const data = Buffer.alloc(1024)
+    data.write('some content\n', 0, 'utf8')
+    const wrongHash = sha256Of(Buffer.from('totally different content'))
+    const filePath = await makeTempFile(data)
+    try {
+      const { verifySha256 } = await import('../../src/services/ffmpeg-downloader.js')
+      await expect(verifySha256(filePath, wrongHash)).rejects.toThrow()
+    } finally {
+      await rm(dirname(filePath), { recursive: true, force: true })
+    }
+  })
+
+  it('throws when file does not exist', async () => {
+    const { verifySha256 } = await import('../../src/services/ffmpeg-downloader.js')
+    await expect(
+      verifySha256('/nonexistent/path/archive.tar.xz', 'a'.repeat(64)),
+    ).rejects.toThrow()
+  })
+})
 
 describe('buildDownloadUrl', () => {
   const sourceUrl = 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest'

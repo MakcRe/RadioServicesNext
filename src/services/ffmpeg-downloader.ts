@@ -5,6 +5,8 @@ import { spawn } from 'child_process'
 import { join, dirname } from 'path'
 import { pipeline } from 'stream/promises'
 import { Readable } from 'stream'
+import { createHash } from 'crypto'
+import { createReadStream } from 'fs'
 import type { AppConfig } from '../config.js'
 
 export type DownloadState =
@@ -16,6 +18,23 @@ export type DownloadState =
   | { state: 'error'; message: string }
 
 export type ProgressCallback = (state: DownloadState) => void
+
+export async function verifySha256(archivePath: string, expectedSha256: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const hash = createHash('sha256')
+    const stream = createReadStream(archivePath)
+    stream.on('data', (chunk) => hash.update(chunk))
+    stream.on('end', () => {
+      const actual = hash.digest('hex')
+      if (actual.toLowerCase() !== expectedSha256.toLowerCase()) {
+        reject(new Error(`SHA256 mismatch: expected ${expectedSha256}, got ${actual}`))
+      } else {
+        resolve()
+      }
+    })
+    stream.on('error', reject)
+  })
+}
 
 export function buildDownloadUrl(sourceUrl: string, platform: NodeJS.Platform, arch: string): string {
   if (platform === 'darwin') {
@@ -165,7 +184,15 @@ export async function downloadFfmpeg(
     onProgress({ state: 'downloading', percent: 0, downloaded: 0, total: 0, speed: 0 })
     await downloadToFile(url, tempFile, onProgress)
 
-    onProgress({ state: 'verifying', message: 'archive downloaded' })
+    onProgress({ state: 'verifying', message: 'verifying archive SHA256' })
+    const sha256Url = url + '.sha256'
+    const sha256Res = await fetch(sha256Url)
+    if (!sha256Res.ok) {
+      throw new Error(`failed to fetch SHA256 file: HTTP ${sha256Res.status}`)
+    }
+    const sha256Text = await sha256Res.text()
+    const expectedSha256 = sha256Text.trim().split(/\s+/)[0]
+    await verifySha256(tempFile, expectedSha256)
 
     onProgress({ state: 'extracting', message: 'extracting archive' })
     extractDir = join(downloadsDir, `extract-${version}`)
@@ -202,7 +229,12 @@ export async function downloadFfmpeg(
     onProgress({ state: 'complete', path: targetPath, version })
     return { path: targetPath, version }
   } catch (err) {
-    onProgress({ state: 'error', message: err instanceof Error ? err.message : String(err) })
+    const msg = err instanceof Error ? err.message : String(err)
+    if (msg.includes('SHA256 mismatch')) {
+      onProgress({ state: 'error', message: 'sha256 mismatch' })
+    } else {
+      onProgress({ state: 'error', message: msg })
+    }
     await rm(tempFile, { force: true })
     await rm(extractDir, { recursive: true, force: true }).catch(() => {})
     throw err

@@ -88,9 +88,13 @@ export class FFmpegManager extends EventEmitter {
     // When systemFallbackPath is explicitly set, try ONLY that path (do NOT also
     // call which('ffmpeg') — otherwise the test that sets a nonexistent explicit
     // path would silently fall back to the real system binary and report "available").
-    const sysCandidates: string[] = this.opts.systemFallbackPath
-      ? [this.opts.systemFallbackPath]
-      : [await this.which('ffmpeg')].filter(Boolean)
+    const sysCandidates: string[] = []
+    if (this.opts.systemFallbackPath) {
+      sysCandidates.push(this.opts.systemFallbackPath)
+    } else {
+      const discovered = await this.which('ffmpeg')
+      if (discovered) sysCandidates.push(discovered)
+    }
     for (const p of sysCandidates) {
       if (await this.canExecute(p)) {
         this.status = {

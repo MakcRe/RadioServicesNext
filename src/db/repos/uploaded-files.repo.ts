@@ -38,4 +38,8 @@ export class UploadedFilesRepo {
   delete(id: number): void {
     this.db.prepare('DELETE FROM uploaded_files WHERE id = ?').run(id)
   }
+
+  getByFilename(filename: string): UploadedFileRow | undefined {
+    return this.db.prepare('SELECT * FROM uploaded_files WHERE filename = ?').get(filename) as UploadedFileRow | undefined
+  }
 }

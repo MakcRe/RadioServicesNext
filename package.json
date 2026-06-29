@@ -1,0 +1,42 @@
+{
+  "name": "radio-services",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev": "node --import tsx/esm src/server.ts",
+    "build": "tsc --noEmit && esbuild --config esbuild.config.mjs",
+    "build:web": "esbuild --config esbuild.config.mjs",
+    "start": "node dist/server.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "fastify": "^4.28.0",
+    "@fastify/websocket": "^10.0.0",
+    "@fastify/static": "^7.0.0",
+    "@fastify/multipart": "^8.3.0",
+    "better-sqlite3": "^11.3.0",
+    "ws": "^8.18.0",
+    "pino": "^9.4.0",
+    "pino-roll": "^2.0.0",
+    "js-yaml": "^4.1.0",
+    "ua-parser-js": "^1.0.39"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.0",
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/ws": "^8.5.12",
+    "@types/js-yaml": "^4.0.9",
+    "typescript": "^5.5.4",
+    "tsx": "^4.19.0",
+    "esbuild": "^0.23.0",
+    "vitest": "^2.0.5",
+    "supertest": "^7.0.0",
+    "@types/supertest": "^6.0.2"
+  }
+}

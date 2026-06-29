@@ -17,6 +17,9 @@ export interface ConnectInput {
   ip: string
   userAgent: string
   referer: string | null
+  device_type?: string | null
+  device_os?: string | null
+  device_browser?: string | null
 }
 
 export class ListenerLogsRepo {
@@ -24,9 +27,16 @@ export class ListenerLogsRepo {
 
   connect(input: ConnectInput): number {
     const info = this.db.prepare(`
-      INSERT INTO listener_logs (ip, user_agent, referer)
-      VALUES (?, ?, ?)
-    `).run(input.ip, input.userAgent, input.referer)
+      INSERT INTO listener_logs (ip, user_agent, referer, device_type, device_os, device_browser)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      input.ip,
+      input.userAgent,
+      input.referer,
+      input.device_type ?? null,
+      input.device_os ?? null,
+      input.device_browser ?? null,
+    )
     return Number(info.lastInsertRowid)
   }
 

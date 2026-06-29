@@ -7,6 +7,7 @@ import { PlaylistRepo } from '../../src/db/repos/playlist.repo.js'
 import { UploadedFilesRepo } from '../../src/db/repos/uploaded-files.repo.js'
 import { PlaylistService } from '../../src/services/playlist-service.js'
 import { UploadService } from '../../src/services/upload-service.js'
+import { silentMp3Frame } from '../helpers/mock-source.js'
 import type Database from 'better-sqlite3'
 
 let tempDir: string
@@ -95,7 +96,7 @@ describe('UploadService', () => {
 fileRepo,
     })
 
-    const buffer = Buffer.from('fake-mp3-content')
+    const buffer = silentMp3Frame()
     const result = await upload.save({
       buffer,
       originalName: 'test.mp3',
@@ -141,5 +142,167 @@ fileRepo,
         getDuration: async () => null,
       }),
     ).rejects.toThrow(/extension/)
+  })
+
+  it('rejects .mp3 file with text content', async () => {
+    const fileRepo = new UploadedFilesRepo(db)
+    const upload = new UploadService({
+      uploadDir: join(tempDir, 'uploads'),
+      maxFileSizeMB: 10,
+      allowedExtensions: ['.mp3'],
+      fileRepo,
+    })
+
+    await expect(
+      upload.save({
+        buffer: Buffer.from('this is plain text content'),
+        originalName: 'fake.mp3',
+        getDuration: async () => null,
+      }),
+    ).rejects.toThrow(/magic bytes/)
+  })
+
+  it('rejects .flac file with text content', async () => {
+    const fileRepo = new UploadedFilesRepo(db)
+    const upload = new UploadService({
+      uploadDir: join(tempDir, 'uploads'),
+      maxFileSizeMB: 10,
+      allowedExtensions: ['.flac'],
+      fileRepo,
+    })
+
+    await expect(
+      upload.save({
+        buffer: Buffer.from('not a flac file at all'),
+        originalName: 'fake.flac',
+        getDuration: async () => null,
+      }),
+    ).rejects.toThrow(/magic bytes/)
+  })
+
+  it('accepts .mp3 file with valid MP3 magic bytes', async () => {
+    const fileRepo = new UploadedFilesRepo(db)
+    const upload = new UploadService({
+      uploadDir: join(tempDir, 'uploads'),
+      maxFileSizeMB: 10,
+      allowedExtensions: ['.mp3'],
+      fileRepo,
+    })
+
+    const buffer = Buffer.from([0xff, 0xfb, 0x10, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
+    const result = await upload.save({
+      buffer,
+      originalName: 'real.mp3',
+      getDuration: async () => null,
+    })
+    expect(result.filename).toMatch(/\.mp3$/)
+  })
+
+  it('accepts .flac file with valid FLAC magic bytes', async () => {
+    const fileRepo = new UploadedFilesRepo(db)
+    const upload = new UploadService({
+      uploadDir: join(tempDir, 'uploads'),
+      maxFileSizeMB: 10,
+      allowedExtensions: ['.flac'],
+      fileRepo,
+    })
+
+    const buffer = Buffer.from('fLaC' + 'x'.repeat(20))
+    const result = await upload.save({
+      buffer,
+      originalName: 'real.flac',
+      getDuration: async () => null,
+    })
+    expect(result.filename).toMatch(/\.flac$/)
+  })
+
+  it('accepts .wav file with valid WAV magic bytes', async () => {
+    const fileRepo = new UploadedFilesRepo(db)
+    const upload = new UploadService({
+      uploadDir: join(tempDir, 'uploads'),
+      maxFileSizeMB: 10,
+      allowedExtensions: ['.wav'],
+      fileRepo,
+    })
+
+    const buffer = Buffer.from('RIFF' + '\x00\x00\x00\x00' + 'WAVE')
+    const result = await upload.save({
+      buffer,
+      originalName: 'real.wav',
+      getDuration: async () => null,
+    })
+    expect(result.filename).toMatch(/\.wav$/)
+  })
+
+  it('accepts .ogg file with valid OGG magic bytes', async () => {
+    const fileRepo = new UploadedFilesRepo(db)
+    const upload = new UploadService({
+      uploadDir: join(tempDir, 'uploads'),
+      maxFileSizeMB: 10,
+      allowedExtensions: ['.ogg'],
+      fileRepo,
+    })
+
+    const buffer = Buffer.from('OggS' + '\x00'.repeat(20))
+    const result = await upload.save({
+      buffer,
+      originalName: 'real.ogg',
+      getDuration: async () => null,
+    })
+    expect(result.filename).toMatch(/\.ogg$/)
+  })
+
+  it('accepts .m4a file with valid M4A magic bytes', async () => {
+    const fileRepo = new UploadedFilesRepo(db)
+    const upload = new UploadService({
+      uploadDir: join(tempDir, 'uploads'),
+      maxFileSizeMB: 10,
+      allowedExtensions: ['.m4a'],
+      fileRepo,
+    })
+
+    const buffer = Buffer.from('\x00\x00\x00\x00ftypM4A ')
+    const result = await upload.save({
+      buffer,
+      originalName: 'real.m4a',
+      getDuration: async () => null,
+    })
+    expect(result.filename).toMatch(/\.m4a$/)
+  })
+
+  it('accepts .aac file with valid AAC magic bytes', async () => {
+    const fileRepo = new UploadedFilesRepo(db)
+    const upload = new UploadService({
+      uploadDir: join(tempDir, 'uploads'),
+      maxFileSizeMB: 10,
+      allowedExtensions: ['.aac'],
+      fileRepo,
+    })
+
+    const buffer = Buffer.from([0xff, 0xf1, 0x10, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
+    const result = await upload.save({
+      buffer,
+      originalName: 'real.aac',
+      getDuration: async () => null,
+    })
+    expect(result.filename).toMatch(/\.aac$/)
+  })
+
+  it('rejects file that is too small for magic bytes detection', async () => {
+    const fileRepo = new UploadedFilesRepo(db)
+    const upload = new UploadService({
+      uploadDir: join(tempDir, 'uploads'),
+      maxFileSizeMB: 10,
+      allowedExtensions: ['.mp3'],
+      fileRepo,
+    })
+
+    await expect(
+      upload.save({
+        buffer: Buffer.from([0xff, 0xfb]),
+        originalName: 'tiny.mp3',
+        getDuration: async () => null,
+      }),
+    ).rejects.toThrow(/too small/)
   })
 })

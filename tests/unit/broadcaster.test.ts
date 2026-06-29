@@ -24,7 +24,7 @@ describe('Broadcaster', () => {
   it('new listeners get ring buffer snapshot', async () => {
     const b = new Broadcaster({ ringCapacity: 1024 })
     const source = new Readable({ read() {} })
-    b.pipeFrom(source)
+    b.pipeFrom(source, { id: 'test-session', startAt: new Date(), sourceType: 'other', userAgent: 'test', mountpoint: '/live' })
 
     source.push(Buffer.from('pre-existing'))
 

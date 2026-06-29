@@ -1,6 +1,7 @@
 import { Readable, PassThrough } from 'stream'
 import { EventEmitter } from 'events'
 import { RingBuffer } from './ring-buffer.js'
+import type { SourceSession } from './source-receiver.js'
 
 export interface ListenerConnection extends EventEmitter {
   write(chunk: Buffer): void
@@ -20,6 +21,11 @@ class Listener extends PassThrough implements ListenerConnection {
     return super.write(chunk)
   }
 
+  override end(): this {
+    super.end()
+    return this
+  }
+
   readSnapshot(): Buffer {
     return this.snapshot
   }
@@ -34,14 +40,14 @@ export class Broadcaster {
   private nextId = 1
   private ringBuffer: RingBuffer
   private sourceStream: Readable | null = null
-  private currentSession: { id: string } | null = null
+  private currentSession: SourceSession | null = null
   private onSourceEndHandler: (() => void) | null = null
 
   constructor(opts: BroadcasterOptions) {
     this.ringBuffer = new RingBuffer(opts.ringCapacity)
   }
 
-  pipeFrom(stream: Readable, session?: { id: string }): void {
+  pipeFrom(stream: Readable, session?: SourceSession): void {
     this.detachSource()
     this.sourceStream = stream
     if (session) this.currentSession = session
@@ -55,11 +61,7 @@ export class Broadcaster {
 
     stream.on('data', processChunk)
 
-    this.onSourceEndHandler = () => {
-      this.sourceStream = null
-      this.currentSession = null
-      this.onSourceEndHandler = null
-    }
+    this.onSourceEndHandler = () => this.detachSource()
     stream.on('end', this.onSourceEndHandler)
     stream.on('error', this.onSourceEndHandler)
   }
@@ -81,7 +83,9 @@ export class Broadcaster {
   }
 
   subscribe(): ListenerConnection {
-    const snapshot = this.ringBuffer.readSnapshot()
+    const snapshot = this.currentSession
+      ? this.ringBuffer.readSnapshot()
+      : Buffer.alloc(0)
     const listener = new Listener(snapshot)
     const id = this.nextId++
     this.listeners.set(id, listener)
@@ -103,5 +107,9 @@ export class Broadcaster {
 
   isLive(): boolean {
     return this.currentSession !== null
+  }
+
+  getCurrentSession(): SourceSession | null {
+    return this.currentSession
   }
 }

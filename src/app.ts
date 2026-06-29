@@ -62,6 +62,7 @@ export async function buildApp(
     archiveDir: config.archive.directory,
     segmentDurationSec: config.archive.segmentDurationSec,
     retentionDays: config.archive.retentionDays,
+    logger,
   })
   const listenerManager = new ListenerManager(new ListenerLogsRepo(db))
   const playlistRepo = new PlaylistRepo(db)

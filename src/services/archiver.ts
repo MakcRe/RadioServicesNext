@@ -2,12 +2,14 @@ import { spawn, type ChildProcess } from 'child_process'
 import { mkdir, readdir, rm, stat } from 'fs/promises'
 import { join } from 'path'
 import type { Readable } from 'stream'
+import type { Logger } from 'pino'
 
 export interface ArchiverOptions {
   ffmpegPath: string
   archiveDir: string
   segmentDurationSec: number
   retentionDays: number
+  logger?: Logger
 }
 
 export class Archiver {
@@ -42,16 +44,15 @@ export class Archiver {
     })
 
     if (this.proc.stderr) {
-      this.proc.stderr.on('data', (chunk) => {
-        const msg = chunk.toString()
-        if (msg.trim()) {
-          console.error('[archiver ffmpeg]', msg.trim())
-        }
+      this.proc.stderr.on('data', () => {
+        // consume stderr to prevent backpressure; ffmpeg writes progress here
       })
     }
 
     this.cleanupTimer = setInterval(() => {
-      this.cleanup().catch((err) => console.error('[archiver cleanup]', err))
+      this.cleanup().catch((err) =>
+        this.opts.logger?.error({ err: err instanceof Error ? err.message : String(err) }, 'archiver cleanup failed'),
+      )
     }, 60 * 60 * 1000)
 
     await this.cleanup().catch(() => {})

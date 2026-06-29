@@ -2,7 +2,10 @@ node_modules/
 dist/
 bin/
 logs/
+data/
+config/config.yaml
 *.log
+*.map
 .env
 .env.local
 .DS_Store

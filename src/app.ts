@@ -163,22 +163,26 @@ export async function buildApp(
     if (!ffmpegStatus.available || !ffmpegStatus.path) {
       throw new Error('ffmpeg not available')
     }
-    const url = `http://127.0.0.1:${config.server.port}/source`
     const { spawn } = await import('child_process')
     const proc = spawn(ffmpegStatus.path, [
       '-re',
       '-i', inputPath,
-      '-c', 'copy',
+      '-map', '0:a:0',
+      '-c:a', 'libmp3lame',
+      '-b:a', '192k',
       '-f', 'mp3',
       '-content_type', 'audio/mpeg',
-      url,
+      'pipe:1',
     ])
-
     proc.stderr?.on('data', (c) => logger.debug({ msg: c.toString() }, 'ffmpeg push'))
-    proc.on('exit', () => {
+
+    sourceReceiver.attachInternalStream(proc.stdout, { name: displayName ?? undefined })
+
+    proc.on('exit', (code, signal) => {
+      sourceReceiver.detachInternalStream()
       const idx = pushProcs.indexOf(proc)
       if (idx >= 0) pushProcs.splice(idx, 1)
-      logger.info('source push exited')
+      logger.info({ code, signal }, 'source push exited')
     })
     pushProcs.push(proc)
 

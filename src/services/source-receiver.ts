@@ -36,9 +36,63 @@ function parseBasicAuth(header: string): string | null {
 export class SourceReceiver extends EventEmitter {
   private activeSession: SourceSession | null = null
   private activeSocket: import('net').Socket | null = null
+  private internalCleanup: (() => void) | null = null
 
   constructor(private opts: SourceReceiverOptions) {
     super()
+  }
+
+  /** Attach a non-HTTP source (e.g. ffmpeg stdout pipe). Avoids the auth requirement. */
+  attachInternalStream(stream: import('stream').Readable, metadata?: Partial<SourceSession['metadata']>): SourceSession {
+    if (this.activeSession && this.activeSocket) {
+      const prevSocket = this.activeSocket
+      const prevSession = this.activeSession
+      this.activeSession = null
+      this.activeSocket = null
+      this.emit('session-end', prevSession)
+      try { if (!prevSocket.destroyed) prevSocket.end() } catch {}
+    }
+    this.detachInternalStream()
+
+    const session: SourceSession = {
+      id: randomUUID(),
+      startAt: new Date(),
+      sourceType: 'ffmpeg',
+      userAgent: 'internal-ffmpeg',
+      mountpoint: '/source',
+      metadata,
+    }
+    this.activeSession = session
+    this.activeSocket = null
+
+    stream.on('data', (chunk: Buffer) => {
+      try { if (this.opts.onData) this.opts.onData(chunk, session) } catch (err) { this.emit('error', err) }
+      this.emit('data', chunk, session)
+    })
+    const cleanup = () => {
+      if (this.activeSession?.id === session.id) {
+        this.activeSession = null
+        this.activeSocket = null
+        this.emit('session-end', session)
+      }
+      this.detachInternalStream()
+    }
+    stream.on('end', cleanup)
+    stream.on('close', cleanup)
+    stream.on('error', cleanup)
+    this.internalCleanup = () => {
+      try { if (!stream.destroyed) stream.destroy() } catch {}
+    }
+
+    this.emit('session-start', session)
+    return session
+  }
+
+  detachInternalStream(): void {
+    if (this.internalCleanup) {
+      this.internalCleanup()
+      this.internalCleanup = null
+    }
   }
 
   async register(app: FastifyInstance): Promise<void> {

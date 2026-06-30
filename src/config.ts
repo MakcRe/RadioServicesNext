@@ -134,3 +134,14 @@ export function warnIfDefaultPassword(cfg: AppConfig, logger: pino.Logger): void
     )
   }
 }
+
+/**
+ * Update the in-memory `config.ffmpeg.version` field. Does NOT persist
+ * to the YAML file — the user-selected version takes effect on next
+ * service restart (which is documented in the admin UI). The setter
+ * is kept in-memory because the operator can edit config.yaml directly
+ * to pin a different version at any time.
+ */
+export function updateFfmpegVersionInMemory(cfg: AppConfig, version: string): void {
+  cfg.ffmpeg.version = version
+}

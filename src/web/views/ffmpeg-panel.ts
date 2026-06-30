@@ -17,9 +17,16 @@ export async function renderFfmpegPanel(container: Element): Promise<void> {
         <p class="text-muted">加载中...</p>
       </div>
     </div>
+
+    <div class="card">
+      <div class="card-title">版本管理</div>
+      <div id="ffmpeg-versions-content">
+        <p class="text-muted">加载中...</p>
+      </div>
+    </div>
   `
 
-  await loadFfmpegStatus()
+  await Promise.all([loadFfmpegStatus(), loadVersionSelector()])
 }
 
 async function loadFfmpegStatus(): Promise<void> {
@@ -168,4 +175,75 @@ async function handleDownload(): Promise<void> {
 
 function isMac(): boolean {
   return navigator.platform.toLowerCase().includes('mac')
+}
+
+async function loadVersionSelector(): Promise<void> {
+  const container = $('#ffmpeg-versions-content')
+  if (!container) return
+
+  try {
+    const data = await api.listFfmpegVersions()
+
+    if (data.versions.length === 0) {
+      container.innerHTML = '<p class="text-muted">暂无已安装版本</p>'
+      return
+    }
+
+    const options = data.versions
+      .map((v) => {
+        const suffix = [
+          v === data.current ? '（当前）' : '',
+          v === data.recommended ? ' ★' : '',
+        ]
+          .filter(Boolean)
+          .join('')
+        return `<option value="${escapeHtml(v)}">${escapeHtml(v)}${suffix}</option>`
+      })
+      .join('')
+
+    container.innerHTML = `
+      <p class="text-muted">已安装版本（按语义版本排序）：</p>
+      <select id="ffmpeg-version-select" class="select">${options}</select>
+      <button class="btn" id="switch-version-btn" style="margin-left: 0.5rem">切换版本</button>
+      <p id="switch-hint" class="text-muted" style="margin-top: 0.5rem; display: none">
+        ⚠ 版本切换将在下次服务启动后生效
+      </p>
+    `
+
+    $('#switch-version-btn')?.addEventListener('click', handleVersionSwitch)
+  } catch (err) {
+    console.error('[ffmpeg-panel] versions error:', err)
+    container.innerHTML = '<p class="text-muted">无法加载版本列表</p>'
+  }
+}
+
+async function handleVersionSwitch(): Promise<void> {
+  const select = $('#ffmpeg-version-select') as HTMLSelectElement | null
+  const hint = $('#switch-hint') as HTMLElement | null
+  const btn = $('#switch-version-btn') as HTMLButtonElement | null
+  if (!select) return
+
+  const version = select.value
+  if (btn) {
+    btn.disabled = true
+    btn.textContent = '切换中...'
+  }
+
+  try {
+    const result = await api.selectFfmpegVersion(version)
+    if (result.success) {
+      if (hint) hint.style.display = 'block'
+      await loadFfmpegStatus()
+    } else {
+      alert(`切换失败: ${result.message}`)
+    }
+  } catch (err) {
+    console.error('[ffmpeg-panel] switch error:', err)
+    alert('切换失败，请重试')
+  } finally {
+    if (btn) {
+      btn.disabled = false
+      btn.textContent = '切换版本'
+    }
+  }
 }

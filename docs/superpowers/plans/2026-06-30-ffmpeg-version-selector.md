@@ -1,12 +1,34 @@
-# FFmpeg 版本选择器 实现计划
+# FFmpeg 版本选择器 实现计划（修订版）
 
 > **面向 AI 代理的工作者：** 必需子技能：使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 逐任务实现此计划。步骤使用复选框（`- [ ]`）语法来跟踪进度。
 
-**目标：** 让运营方在管理面板上查看已安装的所有 FFmpeg 版本，按语义版本号排序，手动选择某个版本作为下次启动的默认版本。
+**修订背景（2026-07-01）**：原始 plan 把 `POST /select` 写 `config.yaml` 内存态。
+Ops 觉得"修改 config 持久化太危险"，且这种行为导致用户反馈"我选了 7.1，还是 8.1"
+（因为 `config.yaml` 重启加载时仍然覆盖了内存态）。修订后：
+- 持久化目标改为**独立文件 `bin/ffmpeg/.state.json`**（由 `keyv` 抽象 + `keyv-file`
+  适配）。完全隔离于 `config.yaml`
+- bundled 阶段改为"用户选择 > ops 写在 config 里的版本 > 最高版本降级"三段优先级
+- 移除原计划对 `resolveLatestFfmpegVersion()` 的隐式覆盖调用
+- **2026-07-01 二次修订（实时生效）**：用户反馈"切换要在下次启动才能用" 不符合直觉。
+  改为 `POST /select` 调用 `FFmpegManager.setVersion()` 立即重探测 bundled binary
+  并替换 `status`。`Archiver` / push-source 改为每次启动通过 `getFfmpegPath()` 函数
+  从 manager 实时拿最新 path。无需重启。
 
-**架构：** 新增 `FFmpegManager.listVersions()` 扫描 `binRoot/.versions/`，按 `normalizeVersion()` 生成的 major.minor 排序（降序）。`doInitialize()` 的 bundled 阶段改为"最高版本优先"而非"配置版本优先"。新增两个 API：`GET /api/ffmpeg/versions` 列出已安装版本、`POST /api/ffmpeg/select` 把用户选择的版本号写入 `config.ffmpeg.version`（内存态，下次启动生效）。前端新增"版本管理"卡片，含 `<select>` 下拉 + 切换按钮。
+**目标：** 让运营方在管理面板上查看已安装的所有 FFmpeg 版本，按语义版本号排序，
+手动选择某个版本 — 选择**实时生效**（archiver 下次启动就用新二进制），并跨服务重启
+持久化（写到独立 state 文件）。
 
-**技术栈：** TypeScript · Fastify · Vitest · js-yaml
+**架构：** 新增 `FFmpegManager.listVersions()` 扫描 `binRoot/.versions/`，按 `normalizeVersion()`
+生成的 major.minor 排序（降序）。`doInitialize()` 的 bundled 阶段改为：
+- 优先尝试 `opts.version` 对应的 bundled 二进制
+- 找不到再降级到 `listVersions()` 降序第一个
+新增独立 `FfmpegRuntimeState` 模块（`src/services/ffmpeg-state.ts`）用 `keyv` + `keyv-file`
+持久化用户选择到 `bin/ffmpeg/.state.json`。`FFmpegManager.initialize()` 在配置
+`runtimeState` 选项后启动时优先读它。新增两个 API：`GET /api/ffmpeg/versions`（响应新增
+`currentPath`）、`POST /api/ffmpeg/select`（写 `runtimeState` + 立即调用
+`FFmpegManager.setVersion()`）。前端新增"版本管理"卡片，含 `<select>` 下拉 + 切换按钮。
+
+**技术栈：** TypeScript · Fastify · Vitest · js-yaml · keyv · keyv-file
 
 **参考文档：** `docs/superpowers/specs/2026-06-30-ffmpeg-version-selector-design.md`
 
@@ -18,20 +40,93 @@
 radioServices/
 ├── src/
 │   ├── services/
-│   │   └── ffmpeg-manager.ts           # 修改: 新增 listVersions()，改 bundled 优先级
+│   │   ├── ffmpeg-manager.ts           # 修改: 新增 listVersions()、改 bundled 优先级
+│   │   │                              #       + 接收 runtimeState 选项 + 移除隐式
+│   │   │                              #         resolveLatestFfmpegVersion 覆盖
+│   │   └── ffmpeg-state.ts             # 新增: FfmpegRuntimeState + createFfmpegRuntimeState
 │   ├── routes/
-│   │   └── ffmpeg.ts                   # 修改: 新增 GET /versions、POST /select
-│   ├── app.ts                          # 修改: 路由已注册（无需改动 — 现存 registerFfmpegRoutes 仍生效）
+│   │   └── ffmpeg.ts                   # 修改: 改 /versions 响应加 currentPath
+│   │                                  #       改 /select 写 runtimeState
+│   │                                  #       改 /status 路径相对化
+│   ├── app.ts                          # 修改: 实例化 runtimeState、注入 manager 与 routes
+│   ├── server.ts                       # 修改: 优雅关停 SIGTERM/SIGINT
 │   ├── web/
-│   │   ├── types.ts                    # 修改: 新增 FFmpegVersionsResponse、SelectVersionResponse
+│   │   ├── types.ts                    # 修改: FFmpegVersionsResponse 加 currentPath
 │   │   ├── api-client.ts               # 修改: 新增 listFfmpegVersions()、selectFfmpegVersion()
 │   │   └── views/
 │   │       └── ffmpeg-panel.ts         # 修改: 新增"版本管理"卡片 + 选择器逻辑
-│   └── config.ts                       # 修改: 新增 updateFfmpegVersionInMemory()
+│   └── config.ts                       # 修改: 不再需要 updateFfmpegVersionInMemory
 └── tests/
     └── integration/
-        └── ffmpeg-versions.test.ts     # 新增: listVersions + select 端点集成测试
+        ├── ffmpeg-versions.test.ts     # 新增: listVersions + select + 持久化 + 重启恢复
+        └── ffmpeg-manager.test.ts      # 修改: spec-test 块更新为新优先级语义
 ```
+
+---
+
+## 任务 0：依赖与持久化抽象层（修订版新增）
+
+**依赖**：新增 `keyv` + `keyv-file`
+
+```bash
+pnpm add keyv keyv-file
+```
+
+keyv 抽象层（多 backend 适配器，0 运行时依赖），keyv-file 是 JSON 文件适配器。
+理由详见 spec §"运行时状态存储"。
+
+**新增文件：`src/services/ffmpeg-state.ts`**
+
+- `FfmpegRuntimeState` 接口：`getSelectedVersion / setSelectedVersion / clearSelectedVersion / close`
+- `createFfmpegRuntimeState(stateFilePath: string)` 工厂函数
+- `defaultStatePath(binRoot)` 计算默认位置 `bin/ffmpeg/.state.json`
+- `setSelectedVersion` 调用 `kv.set(key, value, TTL_NEVER)`（`TTL_NEVER = 0` 在
+  keyv 中规范化为"永不过期"）
+
+---
+
+## 任务 0b：远程版本列表 + 指定版本下载（2026-07-01 新增）
+
+**目的**：让"下载安装"卡片直接展示远程最新 top-N 版本（默认 8），本地已装的
+隐藏下载按钮（改为"已安装"灰色）。这是 UI 改造，跟实时切换一起把"FFmpeg 面板"
+变成一个完整的状态 + 切换 + 升级面板。
+
+**新增文件/改动**：
+
+1. **`src/services/ffmpeg-downloader.ts`** — 新增 `listLatestRemoteVersions(apiUrl, limit, timeoutMs)`
+   - 复用 BtbN / osxexperts 的解析逻辑，但返回 top-N 数组（不是单值）
+   - `resolveLatestFfmpegVersion` 内部改为 `listLatestRemoteVersions(..., 1)[0] ?? null`
+     —— 保持向后兼容
+   - 按 major.minor 去重，每对保留最高 patch（BtbN 标签可能 n7.1.2 / n7.1.5）
+
+2. **`src/services/ffmpeg-manager.ts`**：
+   - `listLatestRemoteVersions(limit = 8)`：根据 platform 选择 apiUrl，调用上面
+   - `triggerDownload(version?: string)`：增加可选 version 参数；不传时回退 `this.opts.version`
+   - `downloadFfmpeg(config, binRoot, onProgress, requestedVersion?)`：增加参数透传
+
+3. **`src/routes/ffmpeg.ts`**：
+   - `GET /api/ffmpeg/remote-versions`：调 manager.listLatestRemoteVersions(8) +
+     manager.listVersions()，按 major.minor 比对标记 `installed`
+   - `POST /api/ffmpeg/download` 接受 `{ version?: string }`：调
+     `manager.triggerDownload(body.version)`
+
+4. **`src/web/views/ffmpeg-panel.ts`**：
+   - 卡片顶部恒定 "✓ FFmpeg 已安装并可用"
+   - 加载 `loadDownloadList()`：渲染远程版本列表，每行 `[下载]` 或 `[已安装]`
+   - 点击下载：复用 SSE 进度流 + 成功后刷新三处（status / downloadList / versionSelector）
+
+5. **`src/web/styles.css`**：
+   - `.version-row` flex 容器（select + button 同行）
+   - `.remote-version-list` / `.remote-version-item` 列表样式
+
+**新增测试**：
+
+- `tests/unit/ffmpeg-downloader.test.ts`：新增 `listLatestRemoteVersions` describe 块
+  - 验证 top-N 截断、按 semver 降序、major.minor 去重保留最高 patch
+  - 验证网络失败时返回空数组
+- `tests/integration/ffmpeg-versions.test.ts`：新增 `GET /api/ffmpeg/remote-versions` 测试
+  - mock fetch：注入远程版本，验证 `installed` 标记
+  - 验证 major.minor 匹配（如本地 8.1 命中远程 8.1.1）
 
 ---
 

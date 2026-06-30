@@ -225,3 +225,68 @@ describe('resolveLatestFfmpegVersion', () => {
     }
   })
 })
+
+describe('listLatestRemoteVersions', () => {
+  function mockFetch(body: unknown, status = 200, contentType = 'application/json') {
+    return vi.fn().mockResolvedValue({
+      ok: status >= 200 && status < 300,
+      status,
+      headers: { get: (k: string) => (k.toLowerCase() === 'content-type' ? contentType : null) },
+      json: async () => body,
+      text: async () => (typeof body === 'string' ? body : JSON.stringify(body)),
+    } as unknown as Response)
+  }
+
+  it('returns up to `limit` versions, descending by semver, deduped by major.minor', async () => {
+    const tags = [
+      { name: 'n6.0' },
+      { name: 'n7.1.2' },
+      { name: 'n7.1.5' },   // patch wins, but major.minor stays 7.1
+      { name: 'n8.1' },
+      { name: 'n8.1.1' },
+      { name: 'n9.0' },
+      { name: 'latest' },     // ignored
+    ]
+    const realFetch = globalThis.fetch
+    globalThis.fetch = mockFetch(tags) as unknown as typeof fetch
+    try {
+      const { listLatestRemoteVersions } = await import('../../src/services/ffmpeg-downloader.js')
+      const v = await listLatestRemoteVersions('https://example.invalid/tags', 3)
+      // Top 3 distinct major.minor are 9.0, 8.1, 7.1 — each entry keeps
+      // its highest patch so the UI can offer the freshest download.
+      expect(v).toEqual(['9.0', '8.1.1', '7.1.5'])
+    } finally {
+      globalThis.fetch = realFetch
+    }
+  })
+
+  it('falls back to highest patch per major.minor pair', async () => {
+    const tags = [
+      { name: 'n7.1' },
+      { name: 'n7.1.2' },
+      { name: 'n7.1.5' },
+      { name: 'n8.0' },
+      { name: 'n8.0.3' },
+    ]
+    const realFetch = globalThis.fetch
+    globalThis.fetch = mockFetch(tags) as unknown as typeof fetch
+    try {
+      const { listLatestRemoteVersions } = await import('../../src/services/ffmpeg-downloader.js')
+      const v = await listLatestRemoteVersions('https://example.invalid/tags', 8)
+      expect(v).toEqual(['8.0.3', '7.1.5'])
+    } finally {
+      globalThis.fetch = realFetch
+    }
+  })
+
+  it('returns an empty array when the remote is unreachable', async () => {
+    const realFetch = globalThis.fetch
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error('network down'))
+    try {
+      const { listLatestRemoteVersions } = await import('../../src/services/ffmpeg-downloader.js')
+      expect(await listLatestRemoteVersions('https://example.invalid/tags')).toEqual([])
+    } finally {
+      globalThis.fetch = realFetch
+    }
+  })
+})

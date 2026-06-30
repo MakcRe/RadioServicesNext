@@ -23,6 +23,8 @@
     "better-sqlite3": "^11.3.0",
     "fastify": "^4.28.0",
     "js-yaml": "^4.1.0",
+    "keyv": "^5.6.0",
+    "keyv-file": "^5.3.5",
     "pino": "^9.4.0",
     "pino-roll": "^2.0.0",
     "ua-parser-js": "^1.0.39",

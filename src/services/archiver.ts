@@ -5,7 +5,15 @@ import type { Readable } from 'stream'
 import type { Logger } from 'pino'
 
 export interface ArchiverOptions {
-  ffmpegPath: string
+  /**
+   * Resolver for the ffmpeg binary path. Called every time the archiver
+   * (re)starts so live-switching versions via the admin UI takes effect
+   * on the next recording session — no service restart needed.
+   *
+   * Returning `null` aborts the start; callers can surface the situation
+   * (ffmpeg not yet installed, version selected but binary missing).
+   */
+  getFfmpegPath: () => string | null
   archiveDir: string
   segmentDurationSec: number
   retentionDays: number
@@ -20,6 +28,10 @@ export class Archiver {
 
   async start(sourceStream: Readable): Promise<void> {
     if (this.proc) throw new Error('archiver already running')
+    const ffmpegPath = this.opts.getFfmpegPath()
+    if (!ffmpegPath) {
+      throw new Error('ffmpeg not available — install a version or pick one from the admin UI')
+    }
     await mkdir(this.opts.archiveDir, { recursive: true })
 
     const filenamePattern = '%Y-%m-%d-%H.mp3'
@@ -36,7 +48,7 @@ export class Archiver {
       join(this.opts.archiveDir, filenamePattern),
     ]
 
-    this.proc = spawn(this.opts.ffmpegPath, args, { cwd: this.opts.archiveDir })
+    this.proc = spawn(ffmpegPath, args, { cwd: this.opts.archiveDir })
 
     sourceStream.pipe(this.proc.stdin!)
     this.proc.stdin!.on('error', () => {

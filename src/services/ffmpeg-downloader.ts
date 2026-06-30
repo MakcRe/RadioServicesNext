@@ -93,6 +93,27 @@ export async function resolveLatestFfmpegVersion(
   apiUrl = 'https://api.github.com/repos/BtbN/FFmpeg-Builds/tags?per_page=100',
   timeoutMs = 3000,
 ): Promise<string | null> {
+  const list = await listLatestRemoteVersions(apiUrl, 1, timeoutMs)
+  return list[0] ?? null
+}
+
+/**
+ * List the top-N most recent remote ffmpeg releases, descending by semver.
+ *
+ * `apiUrl` follows the same dual-protocol convention as
+ * `resolveLatestFfmpegVersion`: BtbN's GitHub JSON tags list on
+ * linux/windows, and osxexperts.net's HTML index on macOS (BtbN dropped
+ * macOS support in 2026).
+ *
+ * Returns a deduplicated major.minor[.patch] list ordered highest-first.
+ * The list never exceeds `limit` items and may be shorter if the remote
+ * doesn't expose that many valid tags.
+ */
+export async function listLatestRemoteVersions(
+  apiUrl = 'https://api.github.com/repos/BtbN/FFmpeg-Builds/tags?per_page=100',
+  limit = 8,
+  timeoutMs = 3000,
+): Promise<string[]> {
   const ac = new AbortController()
   const timer = setTimeout(() => ac.abort(), timeoutMs)
   try {
@@ -100,35 +121,44 @@ export async function resolveLatestFfmpegVersion(
       signal: ac.signal,
       headers: { 'User-Agent': 'radio-services', Accept: 'application/json' },
     })
-    if (!res.ok) return null
+    if (!res.ok) return []
 
     const contentType = res.headers.get('content-type') ?? ''
     if (contentType.includes('application/json')) {
-      // BtbN tags API path
       const tags = (await res.json()) as Array<{ name: string }>
-      let best: { major: number; minor: number; patch: number } | null = null
+      type V = { major: number; minor: number; patch: number }
+      const seen = new Map<string, V>()
       for (const t of tags) {
         const m = /^n(\d+)\.(\d+)(?:\.(\d+))?$/.exec(t.name)
         if (!m) continue
-        const v = { major: +m[1], minor: +m[2], patch: m[3] ? +m[3] : 0 }
-        if (!best || cmp(v, best) > 0) best = v
+        const v: V = { major: +m[1], minor: +m[2], patch: m[3] ? +m[3] : 0 }
+        const key = `${v.major}.${v.minor}`
+        const cur = seen.get(key)
+        if (!cur || cmp(v, cur) > 0) seen.set(key, v)
       }
-      if (!best) return null
-      return `${best.major}.${best.minor}${best.patch ? `.${best.patch}` : ''}`
+      return [...seen.values()]
+        .sort((a, b) => -cmp(a, b))
+        .slice(0, limit)
+        .map((v) => `${v.major}.${v.minor}${v.patch ? `.${v.patch}` : ''}`)
     }
 
-    // osxexperts.net HTML page path. Extract `ffmpeg<major><minor>arm.zip`.
+    // osxexperts.net HTML page path. Deduplicate by major.minor since the
+    // page lists both arm and intel zip files.
     const html = await res.text()
-    const matches = html.matchAll(/ffmpeg(\d+)(\d+)(arm|intel)\.zip/gi)
-    let best: { major: number; minor: number } | null = null
+    const matches = html.matchAll(/ffmpeg(\d+)(\d+)(?:arm|intel)\.zip/gi)
+    type P = { major: number; minor: number }
+    const seenPair = new Map<string, P>()
     for (const m of matches) {
-      const v = { major: +m[1], minor: +m[2] }
-      if (!best || cmpPair(v, best) > 0) best = v
+      const v: P = { major: +m[1], minor: +m[2] }
+      const key = `${v.major}.${v.minor}`
+      seenPair.set(key, v)
     }
-    if (!best) return null
-    return `${best.major}.${best.minor}`
+    return [...seenPair.values()]
+      .sort((a, b) => -cmpPair(a, b))
+      .slice(0, limit)
+      .map((v) => `${v.major}.${v.minor}`)
   } catch {
-    return null
+    return []
   } finally {
     clearTimeout(timer)
   }
@@ -251,8 +281,10 @@ export async function downloadFfmpeg(
   config: AppConfig,
   binRoot: string = 'bin/ffmpeg',
   onProgress: ProgressCallback = () => {},
+  /** Override the version to download. When omitted, uses `config.ffmpeg.version`. */
+  requestedVersion?: string,
 ): Promise<{ path: string; version: string }> {
-  const version = config.ffmpeg.version
+  const version = requestedVersion ?? config.ffmpeg.version
   const versionDir = join(binRoot, '.versions', version)
   const binary = binaryName(process.platform)
   const targetPath = join(versionDir, binary)

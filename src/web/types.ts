@@ -126,10 +126,25 @@ export interface FFmpegVersionsResponse {
   versions: string[]
   current: string | null
   recommended: string | null
+  /** Project-relative path of the currently-active binary, when bundled. */
+  currentPath: string | null
 }
 
 // POST /api/ffmpeg/select
 export interface SelectVersionResponse {
   success: boolean
   message: string
+  /** Whether the selected version is actually available right now. When
+   *  `false`, the request still succeeded (selection persisted) but the
+   *  bundled binary is missing on disk. */
+  available: boolean
+}
+
+// GET /api/ffmpeg/remote-versions
+export interface RemoteVersion {
+  version: string
+  installed: boolean
+}
+export interface RemoteVersionsResponse {
+  versions: RemoteVersion[]
 }

@@ -5,9 +5,10 @@ import { isAbsolute, resolve as resolvePath, join } from 'path'
 import { EventEmitter } from 'events'
 import {
   downloadFfmpeg,
-  resolveLatestFfmpegVersion,
+  listLatestRemoteVersions,
   type DownloadState,
 } from './ffmpeg-downloader.js'
+import type { FfmpegRuntimeState } from './ffmpeg-state.js'
 import type { AppConfig } from '../config.js'
 import type pino from 'pino'
 
@@ -30,6 +31,12 @@ export interface FFmpegManagerOptions {
   systemFallbackPath?: string
   /** Logger for warnings (e.g. version resolution failure). */
   logger?: pino.Logger
+  /**
+   * Runtime state store. When provided AND a `selected_version` is set,
+   * it overrides the configured `version` at boot time so the operator's
+   * admin-UI choice survives a service restart. See `ffmpeg-state.ts`.
+   */
+  runtimeState?: FfmpegRuntimeState
 }
 
 /**
@@ -74,29 +81,21 @@ export class FFmpegManager extends EventEmitter {
     // 防止重入: 多个并发 initialize() 调用应该共享同一个 promise
     if (this.initializingPromise) return this.initializingPromise
 
-    // Best-effort: pick a version that actually exists on the publisher.
-    // macOS uses osxexperts.net (Helmut Tessarek) — BtbN dropped macOS in 2026.
-    // Other platforms use BtbN. Failures are silent — the configured `version`
-    // is the fallback.
-    if (!this.opts.ffmpegPathOverride) {
-      const isMac = process.platform === 'darwin'
-      const resolveUrl = isMac
-        ? (process.env.RADIO_FFMPEG_MAC_URL ?? 'https://www.osxexperts.net')
-        : undefined
-      const resolved = await resolveLatestFfmpegVersion(resolveUrl)
-      if (resolved) {
-        if (resolved !== this.opts.version) {
+    if (!this.opts.ffmpegPathOverride && this.opts.runtimeState) {
+      // Authoritative: user-selected version from the runtime state store.
+      // When the operator clicks "switch to 7.1" in the admin UI, that
+      // choice is persisted (bin/ffmpeg/.state.json) and survives a
+      // service restart. The bundled-detection step below then honours it.
+      const userVersion = await this.opts.runtimeState.getSelectedVersion()
+      if (userVersion) {
+        if (userVersion !== this.opts.version) {
           this.opts.logger?.info(
-            { configured: this.opts.version, resolved, platform: process.platform },
-            '[ffmpeg] using latest published version',
+            { previous: this.opts.version, selected: userVersion },
+            '[ffmpeg] applying user-selected version from runtime state',
           )
         }
-        this.opts.version = resolved
+        this.opts.version = userVersion
       }
-      // resolve failure is expected on networks where the publisher can't
-      // be reached (air-gapped, blocked, slow); downgrade to debug so it
-      // doesn't pollute logs on every boot. Fallback to config.ffmpeg.version
-      // is the default behaviour.
     }
 
     this.initializingPromise = this.doInitialize()
@@ -132,20 +131,15 @@ export class FFmpegManager extends EventEmitter {
     }
 
     // 2. Bundled (项目内已下载的二进制)
-    // 选择语义版本最高的可执行 bundled 二进制（v1.3 起）。
-    // 之前是"配置版本优先"，但当用户下载多个版本时，配置版本不一定是最新。
-    // listVersions() 已按 semver 降序排序且过滤掉不可执行的目录，所以 [0] 就是首选。
+    // 优先级：先尝试 `opts.version`（用户运行时选定或 config.yaml 配置）→
+    //          找不到再按 semver 降序选择最高版本。后者保证 operator
+    //          即便不更新 `opts.version` 也能用上最新已下载的版本，但
+    //          前者确保 UI 里选定的版本永远被尊重——这是切换 7.1/8.1 类
+    //          场景的核心。
     if (!this.forceDownload) {
-      const sorted = await this.listVersions()
-      for (const v of sorted) {
-        const p = join(this.opts.binRoot, '.versions', v, this.binaryName())
-        if (!(await this.canExecute(p))) continue
-        this.status = {
-          available: true,
-          source: 'bundled',
-          path: p,
-          version: await this.getVersion(p),
-        }
+      const bundled = await this.tryBundledVersion(this.opts.version)
+      if (bundled) {
+        this.status = bundled
         return this.status
       }
     }
@@ -227,8 +221,91 @@ export class FFmpegManager extends EventEmitter {
     return this.downloading
   }
 
-  async triggerDownload(): Promise<void> {
+  /**
+   * Try to resolve a bundled ffmpeg for the given version string.
+   *
+   * Resolution order:
+   *   1. `.versions/{version}/ffmpeg` (exact match)
+   *   2. Highest installed semver that is executable (fallback for ops who
+   *      typed a version they haven't downloaded yet)
+   *
+   * Returns the resulting status fragment, or `null` if no bundled binary
+   * is available. Does NOT mutate `this.status` — caller decides.
+   *
+   * Exposed publicly so `setVersion()` (used by the runtime "live switch"
+   * API) can reuse the exact same selection rules as initial boot.
+   */
+  async tryBundledVersion(version: string): Promise<FFmpegStatus | null> {
+    const preferredPath = join(this.opts.binRoot, '.versions', version, this.binaryName())
+    if (await this.canExecute(preferredPath)) {
+      return {
+        available: true,
+        source: 'bundled',
+        path: preferredPath,
+        version: await this.getVersion(preferredPath),
+      }
+    }
+    const sorted = await this.listVersions()
+    for (const v of sorted) {
+      if (v === version) continue // already tried above
+      const p = join(this.opts.binRoot, '.versions', v, this.binaryName())
+      if (!(await this.canExecute(p))) continue
+      return {
+        available: true,
+        source: 'bundled',
+        path: p,
+        version: await this.getVersion(p),
+      }
+    }
+    return null
+  }
+
+  /**
+   * Live-switch the active ffmpeg version (no restart required).
+   *
+   * Updates `opts.version`, re-probes the bundled binary for that version,
+   * and replaces `this.status` so subsequent spawn calls (archiver, push
+   * source, version probes) immediately use the new binary.
+   *
+   * Override mode is preserved: if `ffmpegPathOverride` is set we keep
+   * honouring it. System fallback is NOT touched here — if the new
+   * version has no bundled binary and the previous status came from
+   * system fallback, we keep the system one. Operators wanting to
+   * "downgrade to system" should clear `ffmpeg.version` via the admin UI.
+   *
+   * Returns the new status.
+   */
+  async setVersion(version: string): Promise<FFmpegStatus> {
+    this.opts.version = version
+    const bundled = await this.tryBundledVersion(version)
+    if (bundled) {
+      this.status = bundled
+      return bundled
+    }
+    // No bundled binary — keep current status unless we're already
+    // showing a stale bundled result. If currently bundled and the user
+    // just asked for a version that doesn't exist, surface the "missing"
+    // state so the UI can warn.
+    if (this.status.source === 'bundled') {
+      this.status = { available: false, source: 'missing', path: null, version: null }
+    }
+    return { ...this.status }
+  }
+
+  /**
+   * Trigger an ffmpeg download. When `version` is omitted, uses
+   * `this.opts.version` (the configured/runtime-selected version).
+   * Passing an explicit version is used by the admin UI's "download a
+   * specific remote version" affordance — the operator picks one of the
+   * top-N remote releases and we fetch that exact version into
+   * `.versions/{version}/`.
+   *
+   * Idempotent: if a download is already in progress, the call is a
+   * no-op. Status is updated on success only.
+   */
+  async triggerDownload(version?: string): Promise<void> {
     if (this.downloading) return
+    const targetVersion = version ?? this.opts.version
     // v1.2: download is no longer part of initialize() (which now only does
     // override → bundled → system → missing). triggerDownload() calls
     // downloadFfmpeg directly so the user-initiated download is independent
@@ -243,7 +320,7 @@ export class FFmpegManager extends EventEmitter {
         db: { path: '' },
         server: { host: '0.0.0.0', port: 8000 },
         auth: { sourcePassword: '' },
-        ffmpeg: { version: this.opts.version, sourceUrl: this.opts.downloadUrl },
+        ffmpeg: { version: targetVersion, sourceUrl: this.opts.downloadUrl },
         archive: { directory: '', segmentDurationSec: 0, retentionDays: 0, minFreeSpaceMB: 0 },
         playlist: { uploadDir: '', maxFileSizeMB: 0, allowedExtensions: [] },
         logging: { directory: '', level: '', retentionDays: 0 },
@@ -252,7 +329,8 @@ export class FFmpegManager extends EventEmitter {
       const result = await downloadFfmpeg(
         config,
         this.opts.binRoot,
-        (state: DownloadState) => this.emit('download', state),
+        (state: DownloadState) => this.emit('download', { ...state, version: targetVersion }),
+        targetVersion,
       )
       this.status = {
         available: true,
@@ -263,6 +341,23 @@ export class FFmpegManager extends EventEmitter {
     } finally {
       this.downloading = false
     }
+  }
+
+  /**
+   * List the top-N most recent remote ffmpeg releases from the
+   * publisher's index (BtbN on linux/win, osxexperts.net on mac). The
+   * admin UI uses this to populate "可下载版本" choices.
+   *
+   * `limit` defaults to 8. The list is sorted descending by semver.
+   * Returns an empty array when the remote is unreachable or rate-limits
+   * us — the UI treats that as "no upgrade options available".
+   */
+  async listLatestRemoteVersions(limit = 8): Promise<string[]> {
+    const isMac = process.platform === 'darwin'
+    const apiUrl = isMac
+      ? (process.env.RADIO_FFMPEG_MAC_URL ?? 'https://www.osxexperts.net')
+      : 'https://api.github.com/repos/BtbN/FFmpeg-Builds/tags?per_page=100'
+    return listLatestRemoteVersions(apiUrl, limit)
   }
 
   private binaryName(): string {

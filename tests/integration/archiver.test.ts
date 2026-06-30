@@ -39,7 +39,7 @@ describe('Archiver', () => {
   it('starts a ffmpeg subprocess when given a source stream', async () => {
     const ffmpegPath = fakeFfmpeg()
     const archiver = new Archiver({
-      ffmpegPath,
+      getFfmpegPath: () => ffmpegPath,
       archiveDir,
       segmentDurationSec: 3600,
       retentionDays: 7,
@@ -58,7 +58,7 @@ describe('Archiver', () => {
 
   it('cleans up files older than retention', async () => {
     const archiver = new Archiver({
-      ffmpegPath: '/bin/true',
+      getFfmpegPath: () => '/bin/true',
       archiveDir,
       segmentDurationSec: 3600,
       retentionDays: 7,
@@ -84,7 +84,7 @@ describe('Archiver', () => {
   it('stop() clears running state and stops subprocess', async () => {
     const ffmpegPath = fakeFfmpeg()
     const archiver = new Archiver({
-      ffmpegPath,
+      getFfmpegPath: () => ffmpegPath,
       archiveDir,
       segmentDurationSec: 3600,
       retentionDays: 7,
@@ -103,7 +103,7 @@ describe('Archiver', () => {
 
   it('list() returns sorted file metadata', async () => {
     const archiver = new Archiver({
-      ffmpegPath: '/bin/true',
+      getFfmpegPath: () => '/bin/true',
       archiveDir,
       segmentDurationSec: 3600,
       retentionDays: 7,

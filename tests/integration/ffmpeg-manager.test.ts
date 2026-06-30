@@ -418,8 +418,17 @@ describe('FFmpegManager.listVersions', () => {
   })
 })
 
-describe('FFmpegManager bundled version priority (per spec 2026-06-30)', () => {
-  it('picks the highest semver when multiple versions are installed', async () => {
+describe('FFmpegManager bundled version priority (spec 2026-06-30, revised 2026-07-01)', () => {
+  // The original 2026-06-30 spec said "bundled picks the highest installed
+  // semver regardless of opts.version". That contradicts the explicit
+  // user feedback "I selected 7.1, why am I on 8.1?" — the operator wants
+  // their UI selection to be authoritative. Revised precedence:
+  //   1. opts.version (config.yaml) — operator's deployment choice
+  //   2. runtime state (.state.json) — was already applied earlier
+  //   3. highest installed semver — only when 1 & 2 are missing/broken
+  // Tests below codify the revised order; the spec is updated alongside.
+
+  it('prefers the configured/selected version when it is bundled and executable', async () => {
     const binRoot = join(tempDir, 'bin-priority')
     for (const v of ['7.1', '8.1', '6.0']) {
       const dir = join(binRoot, '.versions', v)
@@ -430,10 +439,33 @@ describe('FFmpegManager bundled version priority (per spec 2026-06-30)', () => {
         { mode: 0o755 },
       )
     }
-    // config says 7.1, but 8.1 should win
+    // config says 7.1 — bundled should honour it (operator chose 7.1).
     const mgr = new FFmpegManager({
       binRoot,
       version: '7.1',
+      downloadUrl: 'https://example.invalid/',
+      systemFallbackPath: '/nonexistent/ffmpeg',
+    })
+    const status = await mgr.initialize()
+    expect(status.source).toBe('bundled')
+    expect(status.path).toBe(join(binRoot, '.versions', '7.1', 'ffmpeg'))
+  })
+
+  it('falls back to the highest semver when the configured version is not bundled', async () => {
+    // No 7.1 binary on disk — manager picks 8.1.
+    const binRoot = join(tempDir, 'bin-priority-fallback')
+    for (const v of ['8.1', '6.0']) {
+      const dir = join(binRoot, '.versions', v)
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(
+        join(dir, 'ffmpeg'),
+        `#!/bin/sh\necho "ffmpeg version ${v}.0"\n`,
+        { mode: 0o755 },
+      )
+    }
+    const mgr = new FFmpegManager({
+      binRoot,
+      version: '7.1', // not bundled
       downloadUrl: 'https://example.invalid/',
       systemFallbackPath: '/nonexistent/ffmpeg',
     })
@@ -454,9 +486,11 @@ describe('FFmpegManager bundled version priority (per spec 2026-06-30)', () => {
       '#!/bin/sh\necho "ffmpeg version 7.1.0"\n',
       { mode: 0o755 },
     )
+    // Both 8.1 broken AND 7.1 = configured → still picks 7.1 because it's
+    // explicitly configured AND bundled-and-executable.
     const mgr = new FFmpegManager({
       binRoot,
-      version: '8.1',
+      version: '7.1',
       downloadUrl: 'https://example.invalid/',
       systemFallbackPath: '/nonexistent/ffmpeg',
     })

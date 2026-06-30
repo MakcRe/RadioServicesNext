@@ -5,6 +5,7 @@ import staticFiles from '@fastify/static'
 import { PassThrough } from 'stream'
 import { join } from 'path'
 import { mkdir } from 'fs/promises'
+import { isAbsolute, resolve as resolvePath } from 'path'
 import { loadConfig, type AppConfig, warnIfDefaultPassword } from './config.js'
 import { createLogger } from './logger.js'
 import { initDb } from './db/sqlite.js'
@@ -12,6 +13,7 @@ import { PlaylistRepo } from './db/repos/playlist.repo.js'
 import { UploadedFilesRepo } from './db/repos/uploaded-files.repo.js'
 import { ListenerLogsRepo } from './db/repos/listener-logs.repo.js'
 import { FFmpegManager } from './services/ffmpeg-manager.js'
+import { createFfmpegRuntimeState, defaultStatePath } from './services/ffmpeg-state.js'
 import { SourceReceiver } from './services/source-receiver.js'
 import { Broadcaster } from './services/broadcaster.js'
 import { Archiver } from './services/archiver.js'
@@ -46,12 +48,21 @@ export async function buildApp(
   await mkdir(config.archive.directory, { recursive: true })
   const db = await initDb(config.db.path)
 
+  // Runtime state store: holds the user-selected ffmpeg version (and
+  // potentially other runtime-only choices). Persisted as a JSON file
+  // under bin/ffmpeg/ — completely separate from config.yaml.
+  const binRootAbs = isAbsolute(deps.binRoot ?? 'bin/ffmpeg')
+    ? (deps.binRoot ?? 'bin/ffmpeg')
+    : resolvePath(process.cwd(), deps.binRoot ?? 'bin/ffmpeg')
+  const runtimeState = createFfmpegRuntimeState(defaultStatePath(binRootAbs))
+
   const ffmpegManager = new FFmpegManager({
     binRoot: deps.binRoot ?? 'bin/ffmpeg',
     version: config.ffmpeg.version,
     downloadUrl: config.ffmpeg.sourceUrl,
     ffmpegPathOverride: deps.ffmpegPathOverride,
     logger,
+    runtimeState,
   })
   await ffmpegManager.initialize()
 
@@ -61,7 +72,11 @@ export async function buildApp(
     onData: undefined,
   })
   const archiver = new Archiver({
-    ffmpegPath: ffmpegManager.getStatus().path ?? '/usr/bin/ffmpeg',
+    // Resolver — read fresh on every start so live-switching via the
+    // admin UI takes effect on the next recording session. The cached
+    // value in ffmpegManager.status is updated by setVersion() so this
+    // picker stays in sync without further plumbing.
+    getFfmpegPath: () => ffmpegManager.getStatus().path,
     archiveDir: config.archive.directory,
     segmentDurationSec: config.archive.segmentDurationSec,
     retentionDays: config.archive.retentionDays,
@@ -138,7 +153,7 @@ export async function buildApp(
   registerArchiveRoutes(app, { archiver })
   registerPlaylistRoutes(app, { playlistService, fileRepo: uploadedFilesRepo })
   registerListenersRoutes(app, { listenerManager })
-  registerFfmpegRoutes(app, { ffmpegManager, wsHub, logger, config })
+  registerFfmpegRoutes(app, { ffmpegManager, wsHub, logger, config, runtimeState, binRoot: binRootAbs })
   registerConfigRoutes(app, { config, wsHub })
   registerWsRoute(app, { wsHub })
 

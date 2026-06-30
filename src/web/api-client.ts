@@ -8,6 +8,7 @@ import type {
   ListenerHistoryResponse,
   OkResponse,
   PlaylistItem,
+  RemoteVersionsResponse,
   SelectVersionResponse,
   StatusResponse,
   UploadedFile,
@@ -138,6 +139,16 @@ export const api = {
 
   selectFfmpegVersion: (version: string) =>
     fetchJson<SelectVersionResponse>(`${BASE}/api/ffmpeg/select`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ version }),
+    }),
+
+  listRemoteFfmpegVersions: () =>
+    fetchJson<RemoteVersionsResponse>(`${BASE}/api/ffmpeg/remote-versions`),
+
+  downloadFfmpegVersion: (version: string) =>
+    fetchJson<OkResponse>(`${BASE}/api/ffmpeg/download`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ version }),

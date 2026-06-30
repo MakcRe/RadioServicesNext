@@ -532,6 +532,39 @@ input:focus, select:focus, textarea:focus {
   margin-top: 12px;
 }
 
+/* Inline form-row for ffmpeg version selector (select + button on one line) */
+.version-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 0.5rem;
+}
+.version-row select.select {
+  flex: 1 1 auto;
+  /* Override the global `input, select { width: 100% }` so the button
+     can share the row instead of being pushed to a new line. */
+  width: auto;
+}
+
+/* Remote-version download list ("下载安装" card). Renders one row per
+   remote release with a download button on the right. */
+.remote-version-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 0 0;
+}
+.remote-version-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.remote-version-item:last-child {
+  border-bottom: none;
+}
+
 /* Archive list */
 .archive-date-group {
   margin-bottom: 20px;

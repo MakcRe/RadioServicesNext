@@ -94,4 +94,20 @@ describe('POST /api/ffmpeg/select', () => {
     expect(res.status).toBe(400)
     expect(res.body.message).toMatch(/损坏|不存在/)
   })
+
+  it('returns 400 when version is empty string', async () => {
+    const res = await request(app.server)
+      .post('/api/ffmpeg/select')
+      .send({ version: '' })
+    expect(res.status).toBe(400)
+    expect(res.body.success).toBe(false)
+  })
+
+  it('returns 400 when version field is missing', async () => {
+    const res = await request(app.server)
+      .post('/api/ffmpeg/select')
+      .send({})
+    expect(res.status).toBe(400)
+    expect(res.body.success).toBe(false)
+  })
 })

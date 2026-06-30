@@ -417,3 +417,50 @@ describe('FFmpegManager.listVersions', () => {
     expect(await mgr.listVersions()).toEqual(['7.1'])
   })
 })
+
+describe('FFmpegManager bundled version priority (per spec 2026-06-30)', () => {
+  it('picks the highest semver when multiple versions are installed', async () => {
+    const binRoot = join(tempDir, 'bin-priority')
+    for (const v of ['7.1', '8.1', '6.0']) {
+      const dir = join(binRoot, '.versions', v)
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(
+        join(dir, 'ffmpeg'),
+        `#!/bin/sh\necho "ffmpeg version ${v}.0"\n`,
+        { mode: 0o755 },
+      )
+    }
+    // config says 7.1, but 8.1 should win
+    const mgr = new FFmpegManager({
+      binRoot,
+      version: '7.1',
+      downloadUrl: 'https://example.invalid/',
+      systemFallbackPath: '/nonexistent/ffmpeg',
+    })
+    const status = await mgr.initialize()
+    expect(status.source).toBe('bundled')
+    expect(status.path).toBe(join(binRoot, '.versions', '8.1', 'ffmpeg'))
+  })
+
+  it('falls back to next-highest when top version is non-executable', async () => {
+    const binRoot = join(tempDir, 'bin-fallback')
+    mkdirSync(join(binRoot, '.versions', '8.1'), { recursive: true })
+    mkdirSync(join(binRoot, '.versions', '7.1'), { recursive: true })
+    // 8.1 broken
+    writeFileSync(join(binRoot, '.versions', '8.1', 'ffmpeg'), 'broken')
+    // 7.1 working
+    writeFileSync(
+      join(binRoot, '.versions', '7.1', 'ffmpeg'),
+      '#!/bin/sh\necho "ffmpeg version 7.1.0"\n',
+      { mode: 0o755 },
+    )
+    const mgr = new FFmpegManager({
+      binRoot,
+      version: '8.1',
+      downloadUrl: 'https://example.invalid/',
+      systemFallbackPath: '/nonexistent/ffmpeg',
+    })
+    const status = await mgr.initialize()
+    expect(status.path).toBe(join(binRoot, '.versions', '7.1', 'ffmpeg'))
+  })
+})

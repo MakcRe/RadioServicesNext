@@ -132,39 +132,20 @@ export class FFmpegManager extends EventEmitter {
     }
 
     // 2. Bundled (项目内已下载的二进制)
-    // Try the configured .versions/{this.opts.version}/ slot first,
-    // then fall through to ANY .versions/{v}/ffmpeg — this lets a
-    // hand-placed binary (auto-migrated by migrateLooseBinary above
-    // into .versions/{probedVersion}/) be picked up even when its
-    // version doesn't match config.ffmpeg.version.
+    // 选择语义版本最高的可执行 bundled 二进制（v1.3 起）。
+    // 之前是"配置版本优先"，但当用户下载多个版本时，配置版本不一定是最新。
+    // listVersions() 已按 semver 降序排序且过滤掉不可执行的目录，所以 [0] 就是首选。
     if (!this.forceDownload) {
-      const candidates: string[] = []
-      const preferred = join(this.opts.binRoot, '.versions', this.opts.version, this.binaryName())
-      if (existsSync(preferred)) candidates.push(preferred)
-      // Glob for other .versions/*/ffmpeg entries (depth-bounded to
-      // avoid scanning arbitrarily deep trees).
-      const versionsRoot = join(this.opts.binRoot, '.versions')
-      try {
-        const entries = await readdir(versionsRoot, { withFileTypes: true })
-        for (const e of entries) {
-          if (!e.isDirectory()) continue
-          const p = join(versionsRoot, e.name, this.binaryName())
-          if (p !== preferred && existsSync(p)) candidates.push(p)
+      const sorted = await this.listVersions()
+      for (const v of sorted) {
+        const p = join(this.opts.binRoot, '.versions', v, this.binaryName())
+        this.status = {
+          available: true,
+          source: 'bundled',
+          path: p,
+          version: await this.getVersion(p),
         }
-      } catch {
-        // .versions/ doesn't exist yet — that's fine, only `preferred` is checked.
-      }
-
-      for (const bundled of candidates) {
-        if (await this.canExecute(bundled)) {
-          this.status = {
-            available: true,
-            source: 'bundled',
-            path: bundled,
-            version: await this.getVersion(bundled),
-          }
-          return this.status
-        }
+        return this.status
       }
     }
 

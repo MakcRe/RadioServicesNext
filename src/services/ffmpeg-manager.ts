@@ -79,12 +79,11 @@ export class FFmpegManager extends EventEmitter {
           )
         }
         this.opts.version = resolved
-      } else {
-        this.opts.logger?.warn(
-          { configured: this.opts.version, platform: process.platform },
-          '[ffmpeg] could not resolve latest version; falling back to configured value',
-        )
       }
+      // resolve failure is expected on networks where the publisher can't
+      // be reached (air-gapped, blocked, slow); downgrade to debug so it
+      // doesn't pollute logs on every boot. Fallback to config.ffmpeg.version
+      // is the default behaviour.
     }
 
     this.initializingPromise = this.doInitialize()

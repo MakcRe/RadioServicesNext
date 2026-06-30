@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { buildDownloadUrl } from '../../src/services/ffmpeg-downloader.js'
 import { createHash } from 'crypto'
 import { mkdir, writeFile, rm } from 'fs/promises'
@@ -74,32 +74,154 @@ describe('verifySha256', () => {
 describe('buildDownloadUrl', () => {
   const sourceUrl = 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest'
 
-  it('builds macOS arm64 URL', () => {
-    const url = buildDownloadUrl(sourceUrl, 'darwin', 'arm64')
-    expect(url).toBe(`${sourceUrl}/ffmpeg-master-latest-macos64-gpl.tar.xz`)
+  it('builds macOS arm64 URL (osxexperts.net, BtbN dropped macOS in 2026)', () => {
+    const url = buildDownloadUrl(sourceUrl, 'darwin', 'arm64', '8.1')
+    expect(url).toBe('https://www.osxexperts.net/ffmpeg81arm.zip')
   })
 
-  it('builds macOS x86_64 URL', () => {
-    const url = buildDownloadUrl(sourceUrl, 'darwin', 'x64')
-    expect(url).toBe(`${sourceUrl}/ffmpeg-master-latest-macos64-gpl.tar.xz`)
+  it('builds macOS x86_64 URL (osxexperts.net)', () => {
+    const url = buildDownloadUrl(sourceUrl, 'darwin', 'x64', '8.0')
+    expect(url).toBe('https://www.osxexperts.net/ffmpeg80intel.zip')
+  })
+
+  it('builds macOS URL with single-component version (e.g. 8)', () => {
+    const url = buildDownloadUrl(sourceUrl, 'darwin', 'arm64', '8')
+    expect(url).toBe('https://www.osxexperts.net/ffmpeg8arm.zip')
+  })
+
+  it('honours RADIO_FFMPEG_MAC_URL override for macOS', () => {
+    const prev = process.env.RADIO_FFMPEG_MAC_URL
+    process.env.RADIO_FFMPEG_MAC_URL = 'https://mirror.example/ffmpeg'
+    try {
+      expect(buildDownloadUrl(sourceUrl, 'darwin', 'arm64', '8.1')).toBe(
+        'https://mirror.example/ffmpeg/ffmpeg81arm.zip',
+      )
+      expect(buildDownloadUrl(sourceUrl, 'darwin', 'x64', '8.0')).toBe(
+        'https://mirror.example/ffmpeg/ffmpeg80intel.zip',
+      )
+    } finally {
+      if (prev === undefined) delete process.env.RADIO_FFMPEG_MAC_URL
+      else process.env.RADIO_FFMPEG_MAC_URL = prev
+    }
   })
 
   it('builds Linux x86_64 URL', () => {
-    const url = buildDownloadUrl(sourceUrl, 'linux', 'x64')
+    const url = buildDownloadUrl(sourceUrl, 'linux', 'x64', '8.1.1')
     expect(url).toBe(`${sourceUrl}/ffmpeg-master-latest-linux64-gpl.tar.xz`)
   })
 
   it('builds Linux arm64 URL', () => {
-    const url = buildDownloadUrl(sourceUrl, 'linux', 'arm64')
+    const url = buildDownloadUrl(sourceUrl, 'linux', 'arm64', '8.1.1')
     expect(url).toBe(`${sourceUrl}/ffmpeg-master-latest-linuxarm64-gpl.tar.xz`)
   })
 
   it('builds Windows x86_64 URL', () => {
-    const url = buildDownloadUrl(sourceUrl, 'win32', 'x64')
+    const url = buildDownloadUrl(sourceUrl, 'win32', 'x64', '8.1.1')
     expect(url).toBe(`${sourceUrl}/ffmpeg-master-latest-win64-gpl.zip`)
   })
 
+  it('builds Windows arm64 URL', () => {
+    const url = buildDownloadUrl(sourceUrl, 'win32', 'arm64', '8.1.1')
+    expect(url).toBe(`${sourceUrl}/ffmpeg-master-latest-winarm64-gpl.zip`)
+  })
+
   it('throws on unsupported platform', () => {
-    expect(() => buildDownloadUrl(sourceUrl, 'freebsd', 'x64')).toThrow(/unsupported/i)
+    expect(() => buildDownloadUrl(sourceUrl, 'freebsd', 'x64', '8.1.1')).toThrow(/unsupported/i)
+  })
+})
+
+describe('resolveLatestFfmpegVersion', () => {
+  // Stub global fetch so we don't depend on network in CI.
+  function mockFetch(body: unknown, status = 200, contentType = 'application/json') {
+    return vi.fn().mockResolvedValue({
+      ok: status >= 200 && status < 300,
+      status,
+      headers: { get: (k: string) => (k.toLowerCase() === 'content-type' ? contentType : null) },
+      json: async () => body,
+      text: async () => (typeof body === 'string' ? body : JSON.stringify(body)),
+    } as unknown as Response)
+  }
+
+  it('returns the highest nX.Y[.Z] tag from the BtbN tags API', async () => {
+    const tags = [
+      { name: 'n7.1' },
+      { name: 'n7.1.2' },
+      { name: 'n8.1' },
+      { name: 'n8.1.1' },
+      { name: 'latest' },          // ignored
+      { name: 'autobuild-1234' },  // ignored
+    ]
+    const realFetch = globalThis.fetch
+    globalThis.fetch = mockFetch(tags) as unknown as typeof fetch
+    try {
+      const { resolveLatestFfmpegVersion } = await import('../../src/services/ffmpeg-downloader.js')
+      const v = await resolveLatestFfmpegVersion('https://example.invalid/tags')
+      expect(v).toBe('8.1.1')
+    } finally {
+      globalThis.fetch = realFetch
+    }
+  })
+
+  it('returns the highest version from osxexperts.net HTML (macOS)', async () => {
+    const html = `
+      <html><body>
+        <a class="btn" href="https://www.osxexperts.net/ffmpeg80intel.zip">Download ffmpeg 8.0 (Intel)</a>
+        <a class="btn" href="https://www.osxexperts.net/ffmpeg81arm.zip">Download ffmpeg 8.1 (Apple Silicon)</a>
+        <a class="btn" href="https://www.osxexperts.net/ffmpeg79intel.zip">older 7.9</a>
+      </body></html>
+    `
+    const realFetch = globalThis.fetch
+    globalThis.fetch = mockFetch(html, 200, 'text/html') as unknown as typeof fetch
+    try {
+      const { resolveLatestFfmpegVersion } = await import('../../src/services/ffmpeg-downloader.js')
+      const v = await resolveLatestFfmpegVersion('https://www.osxexperts.net')
+      expect(v).toBe('8.1')
+    } finally {
+      globalThis.fetch = realFetch
+    }
+  })
+
+  it('returns null on non-OK response', async () => {
+    const realFetch = globalThis.fetch
+    globalThis.fetch = mockFetch({}, 500) as unknown as typeof fetch
+    try {
+      const { resolveLatestFfmpegVersion } = await import('../../src/services/ffmpeg-downloader.js')
+      expect(await resolveLatestFfmpegVersion('https://example.invalid/tags')).toBeNull()
+    } finally {
+      globalThis.fetch = realFetch
+    }
+  })
+
+  it('returns null on network error', async () => {
+    const realFetch = globalThis.fetch
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error('ECONNREFUSED')) as unknown as typeof fetch
+    try {
+      const { resolveLatestFfmpegVersion } = await import('../../src/services/ffmpeg-downloader.js')
+      expect(await resolveLatestFfmpegVersion('https://example.invalid/tags', 1000)).toBeNull()
+    } finally {
+      globalThis.fetch = realFetch
+    }
+  })
+
+  it('returns null when no nX.Y[.Z] tags are present', async () => {
+    const realFetch = globalThis.fetch
+    globalThis.fetch = mockFetch([{ name: 'latest' }]) as unknown as typeof fetch
+    try {
+      const { resolveLatestFfmpegVersion } = await import('../../src/services/ffmpeg-downloader.js')
+      expect(await resolveLatestFfmpegVersion('https://example.invalid/tags')).toBeNull()
+    } finally {
+      globalThis.fetch = realFetch
+    }
+  })
+
+  it('returns null when osxexperts HTML has no ffmpegXX*.zip links', async () => {
+    const realFetch = globalThis.fetch
+    globalThis.fetch = mockFetch('<html><body>no ffmpeg here</body></html>', 200, 'text/html') as unknown as typeof fetch
+    try {
+      const { resolveLatestFfmpegVersion } = await import('../../src/services/ffmpeg-downloader.js')
+      expect(await resolveLatestFfmpegVersion('https://www.osxexperts.net')).toBeNull()
+    } finally {
+      globalThis.fetch = realFetch
+    }
   })
 })

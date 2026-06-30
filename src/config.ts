@@ -64,7 +64,7 @@ const DEFAULTS: AppConfig = {
   server: { host: '0.0.0.0', port: 8000 },
   auth: { sourcePassword: 'hackme' },
   ffmpeg: {
-    version: '7.1',
+    version: process.platform === 'darwin' ? '8.1' : '7.1',
     sourceUrl: 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest',
   },
   archive: {

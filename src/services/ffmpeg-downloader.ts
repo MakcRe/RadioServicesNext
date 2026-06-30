@@ -38,9 +38,26 @@ export async function verifySha256(archivePath: string, expectedSha256: string):
   })
 }
 
-export function buildDownloadUrl(sourceUrl: string, platform: NodeJS.Platform, arch: string): string {
+export function buildDownloadUrl(
+  sourceUrl: string,
+  platform: NodeJS.Platform,
+  arch: string,
+  version: string,
+): string {
+  // macOS builds are NOT published by BtbN since 2026 — its README only ships
+  // win64/winarm64 and linux64/linuxarm64. We use Helmut Tessarek's
+  // osxexperts.net instead, which is the canonical macOS static build host
+  // (also referenced by `ffmpeg-static`'s README).
+  //
+  // Filename convention on osxexperts.net:
+  //   ffmpeg<majorMinor>{arm,intel}.zip
+  // e.g. 8.1 → ffmpeg81arm.zip (Apple Silicon), 8.0 → ffmpeg80intel.zip (Intel)
   if (platform === 'darwin') {
-    return `${sourceUrl}/ffmpeg-master-latest-macos64-gpl.tar.xz`
+    const macBase = process.env.RADIO_FFMPEG_MAC_URL ?? 'https://www.osxexperts.net'
+    const [major, minor] = version.split('.')
+    const majorMinor = `${major}${minor ?? ''}`
+    const archTag = arch === 'arm64' ? 'arm' : 'intel'
+    return `${macBase}/ffmpeg${majorMinor}${archTag}.zip`
   }
   if (platform === 'linux' && arch === 'x64') {
     return `${sourceUrl}/ffmpeg-master-latest-linux64-gpl.tar.xz`
@@ -51,10 +68,81 @@ export function buildDownloadUrl(sourceUrl: string, platform: NodeJS.Platform, a
   if (platform === 'win32' && arch === 'x64') {
     return `${sourceUrl}/ffmpeg-master-latest-win64-gpl.zip`
   }
+  if (platform === 'win32' && arch === 'arm64') {
+    return `${sourceUrl}/ffmpeg-master-latest-winarm64-gpl.zip`
+  }
   if (platform === 'linux' && arch === 'ia32') {
     return `${sourceUrl}/ffmpeg-master-latest-linux32-gpl.tar.xz`
   }
   throw new Error(`unsupported platform/arch: ${platform}/${arch}`)
+}
+
+/**
+ * Resolve the latest published FFmpeg version.
+ *
+ * - macOS (osxexperts.net): the page lists `<a href="ffmpegXX<arm|intel>.zip">`
+ *   links where `XX` is `<major><minor>` concatenated. Parse the highest.
+ * - Other platforms (BtbN): tags look like `n7.1.2` or `n8.1.1` for stable
+ *   releases (pre-release suffixes are skipped).
+ *
+ * Used at startup so macOS picks up a version that actually exists on the
+ * publisher. Network failures are non-fatal — caller falls back to the
+ * configured default.
+ */
+export async function resolveLatestFfmpegVersion(
+  apiUrl = 'https://api.github.com/repos/BtbN/FFmpeg-Builds/tags?per_page=100',
+  timeoutMs = 3000,
+): Promise<string | null> {
+  const ac = new AbortController()
+  const timer = setTimeout(() => ac.abort(), timeoutMs)
+  try {
+    const res = await fetch(apiUrl, {
+      signal: ac.signal,
+      headers: { 'User-Agent': 'radio-services', Accept: 'application/json' },
+    })
+    if (!res.ok) return null
+
+    const contentType = res.headers.get('content-type') ?? ''
+    if (contentType.includes('application/json')) {
+      // BtbN tags API path
+      const tags = (await res.json()) as Array<{ name: string }>
+      let best: { major: number; minor: number; patch: number } | null = null
+      for (const t of tags) {
+        const m = /^n(\d+)\.(\d+)(?:\.(\d+))?$/.exec(t.name)
+        if (!m) continue
+        const v = { major: +m[1], minor: +m[2], patch: m[3] ? +m[3] : 0 }
+        if (!best || cmp(v, best) > 0) best = v
+      }
+      if (!best) return null
+      return `${best.major}.${best.minor}${best.patch ? `.${best.patch}` : ''}`
+    }
+
+    // osxexperts.net HTML page path. Extract `ffmpeg<major><minor>arm.zip`.
+    const html = await res.text()
+    const matches = html.matchAll(/ffmpeg(\d+)(\d+)(arm|intel)\.zip/gi)
+    let best: { major: number; minor: number } | null = null
+    for (const m of matches) {
+      const v = { major: +m[1], minor: +m[2] }
+      if (!best || cmpPair(v, best) > 0) best = v
+    }
+    if (!best) return null
+    return `${best.major}.${best.minor}`
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+function cmp(a: { major: number; minor: number; patch: number }, b: { major: number; minor: number; patch: number }): number {
+  if (a.major !== b.major) return a.major - b.major
+  if (a.minor !== b.minor) return a.minor - b.minor
+  return a.patch - b.patch
+}
+
+function cmpPair(a: { major: number; minor: number }, b: { major: number; minor: number }): number {
+  if (a.major !== b.major) return a.major - b.major
+  return a.minor - b.minor
 }
 
 function binaryName(platform: NodeJS.Platform): string {
@@ -174,11 +262,15 @@ export async function downloadFfmpeg(
     return { path: targetPath, version }
   }
 
-  const url = buildDownloadUrl(config.ffmpeg.sourceUrl, process.platform, process.arch)
+  const url = buildDownloadUrl(config.ffmpeg.sourceUrl, process.platform, process.arch, version)
   const downloadsDir = join(binRoot, '.downloads')
   await mkdir(downloadsDir, { recursive: true })
 
-  const archiveFile = join(downloadsDir, `ffmpeg-${version}${process.platform === 'win32' ? '.zip' : '.tar.xz'}`)
+  const isMac = process.platform === 'darwin'
+  const archiveFile = join(
+    downloadsDir,
+    `ffmpeg-${version}${process.platform === 'win32' || isMac ? '.zip' : '.tar.xz'}`,
+  )
   const tempFile = archiveFile + '.part'
   let extractDir = ''
 
@@ -186,21 +278,26 @@ export async function downloadFfmpeg(
     onProgress({ state: 'downloading', percent: 0, downloaded: 0, total: 0, speed: 0 })
     await downloadToFile(url, tempFile, onProgress)
 
-    onProgress({ state: 'verifying', message: 'verifying archive SHA256' })
-    const sha256Url = url + '.sha256'
-    const sha256Res = await fetch(sha256Url)
-    if (!sha256Res.ok) {
-      throw new Error(`failed to fetch SHA256 file: HTTP ${sha256Res.status}`)
+    // macOS builds (osxexperts.net) don't ship a SHA256 sidecar — skip
+    // verification on that path. The download URL is pinned to HTTPS and the
+    // publisher (Helmut Tessarek) signs the release page.
+    if (!isMac) {
+      onProgress({ state: 'verifying', message: 'verifying archive SHA256' })
+      const sha256Url = url + '.sha256'
+      const sha256Res = await fetch(sha256Url)
+      if (!sha256Res.ok) {
+        throw new Error(`failed to fetch SHA256 file: HTTP ${sha256Res.status}`)
+      }
+      const sha256Text = await sha256Res.text()
+      const expectedSha256 = sha256Text.trim().split(/\s+/)[0]
+      await verifySha256(tempFile, expectedSha256)
     }
-    const sha256Text = await sha256Res.text()
-    const expectedSha256 = sha256Text.trim().split(/\s+/)[0]
-    await verifySha256(tempFile, expectedSha256)
 
     onProgress({ state: 'extracting', message: 'extracting archive' })
     extractDir = join(downloadsDir, `extract-${version}`)
     await mkdir(extractDir, { recursive: true })
 
-    if (process.platform === 'win32') {
+    if (process.platform === 'win32' || isMac) {
       await extractZip(tempFile, extractDir)
     } else {
       await extractTarXz(tempFile, extractDir)

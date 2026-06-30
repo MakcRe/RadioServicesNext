@@ -61,6 +61,32 @@ export class FFmpegManager extends EventEmitter {
     // 防止重入: 多个并发 initialize() 调用应该共享同一个 promise
     if (this.initializingPromise) return this.initializingPromise
 
+    // Best-effort: pick a version that actually exists on the publisher.
+    // macOS uses osxexperts.net (Helmut Tessarek) — BtbN dropped macOS in 2026.
+    // Other platforms use BtbN. Failures are silent — the configured `version`
+    // is the fallback.
+    if (!this.opts.ffmpegPathOverride) {
+      const isMac = process.platform === 'darwin'
+      const resolveUrl = isMac
+        ? (process.env.RADIO_FFMPEG_MAC_URL ?? 'https://www.osxexperts.net')
+        : undefined
+      const resolved = await resolveLatestFfmpegVersion(resolveUrl)
+      if (resolved) {
+        if (resolved !== this.opts.version) {
+          this.opts.logger?.info(
+            { configured: this.opts.version, resolved, platform: process.platform },
+            '[ffmpeg] using latest published version',
+          )
+        }
+        this.opts.version = resolved
+      } else {
+        this.opts.logger?.warn(
+          { configured: this.opts.version, platform: process.platform },
+          '[ffmpeg] could not resolve latest version; falling back to configured value',
+        )
+      }
+    }
+
     this.initializingPromise = this.doInitialize()
     return this.initializingPromise
   }

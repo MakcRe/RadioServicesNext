@@ -288,6 +288,38 @@ export class FFmpegManager extends EventEmitter {
   }
 
   /**
+   * Scan `<binRoot>/.versions/*` for executables, return major.minor
+   * strings sorted descending by semver. Used by the bundled-slot picker
+   * and by the admin "版本管理" UI.
+   *
+   * - Reads directory entries only (no recursion beyond depth 2).
+   * - Filters out non-executable files via `canExecute()`.
+   * - Stable across directory iteration order on different filesystems.
+   */
+  async listVersions(): Promise<string[]> {
+    const versionsRoot = join(this.opts.binRoot, '.versions')
+    const installed: string[] = []
+    let entries: import('fs').Dirent[]
+    try {
+      entries = await readdir(versionsRoot, { withFileTypes: true })
+    } catch {
+      return []
+    }
+    for (const e of entries) {
+      if (!e.isDirectory()) continue
+      const binPath = join(versionsRoot, e.name, this.binaryName())
+      if (!(await this.canExecute(binPath))) continue
+      installed.push(e.name)
+    }
+    return installed.sort((a, b) => {
+      const [amaj, amin] = a.split('.').map(Number)
+      const [bmaj, bmin] = b.split('.').map(Number)
+      if (bmaj !== amaj) return bmaj - amaj
+      return bmin - amin
+    })
+  }
+
+  /**
    * If a loose ffmpeg binary exists at `<binRoot>/ffmpeg` (or
    * `<binRoot>/ffmpeg.exe` on Windows), probe its actual version and
    * migrate it into `<binRoot>/.versions/{version}/ffmpeg` so step 2

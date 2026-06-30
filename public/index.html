@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>radioServices · 在线广播</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --bg-elev: #161b22;
+      --text: #c9d1d9;
+      --text-dim: #8b949e;
+      --border: #30363d;
+      --radius: 8px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 480px;
+      text-align: center;
+    }
+
+    .logo {
+      font-size: 56px;
+      margin-bottom: 12px;
+      line-height: 1;
+    }
+
+    h1 {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      margin-bottom: 4px;
+    }
+
+    .tagline {
+      font-size: 14px;
+      color: var(--text-dim);
+      margin-bottom: 36px;
+    }
+
+    .player {
+      background: var(--bg-elev);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 40px;
+    }
+
+    audio {
+      width: 100%;
+      display: block;
+      accent-color: #58a6ff;
+    }
+
+    .hint {
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-top: 10px;
+    }
+
+    .footer {
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+
+    .footer a {
+      color: #58a6ff;
+      text-decoration: none;
+    }
+
+    .footer a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">📻</div>
+    <h1>radioServices</h1>
+    <p class="tagline">在线广播</p>
+
+    <div class="player">
+      <audio controls preload="none">
+        <source src="/stream" type="audio/mpeg">
+        您的浏览器不支持音频播放。
+      </audio>
+      <p class="hint">点击播放按钮收听直播</p>
+    </div>
+
+    <p class="footer">
+      © 2026 · 管理入口 → <a href="/admin">/admin</a>
+    </p>
+  </div>
+</body>
+</html>

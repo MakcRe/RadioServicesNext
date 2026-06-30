@@ -1,11 +1,5 @@
 import { api } from '../api-client.js'
-import { $, formatBytes } from '../ui.js'
-
-function escapeHtml(str: string): string {
-  const div = document.createElement('div')
-  div.textContent = str
-  return div.innerHTML
-}
+import { $, formatBytes, escapeHtml } from '../ui.js'
 
 export async function renderArchive(container: Element): Promise<void> {
   container.innerHTML = `

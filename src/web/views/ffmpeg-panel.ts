@@ -1,11 +1,5 @@
 import { api, startFfmpegDownloadStream } from '../api-client.js'
-import { $ } from '../ui.js'
-
-function escapeHtml(str: string): string {
-  const div = document.createElement('div')
-  div.textContent = str
-  return div.innerHTML
-}
+import { $, escapeHtml } from '../ui.js'
 
 interface FfmpegStatus {
   available: boolean

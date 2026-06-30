@@ -1,11 +1,5 @@
 import { api } from '../api-client.js'
-import { $, $$, formatBytes, formatDuration, showToast } from '../ui.js'
-
-function escapeHtml(str: string): string {
-  const div = document.createElement('div')
-  div.textContent = str
-  return div.innerHTML
-}
+import { $, $$, formatBytes, formatDuration, showToast, escapeHtml } from '../ui.js'
 
 export async function renderSource(container: Element): Promise<void> {
   container.innerHTML = `

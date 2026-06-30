@@ -1,11 +1,5 @@
 import { api } from '../api-client.js'
-import { $, formatTimeAgo, formatDuration } from '../ui.js'
-
-function escapeHtml(str: string): string {
-  const div = document.createElement('div')
-  div.textContent = str
-  return div.innerHTML
-}
+import { $, formatTimeAgo, formatDuration, escapeHtml } from '../ui.js'
 
 export async function renderListeners(container: Element): Promise<void> {
   container.innerHTML = `

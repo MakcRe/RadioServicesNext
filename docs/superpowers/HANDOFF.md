@@ -10,11 +10,12 @@
 设计规格：`docs/superpowers/specs/2026-06-29-radio-services-design.md`（830 行）
 实施计划：`docs/superpowers/plans/2026-06-29-radio-services.md`（4826 行）
 
-### 已完成 commits（27 个）
+### 已完成 commits（29 个）
 
-v1.1 收尾（8 个）：
+v1.1 收尾（10 个）：
 ```
-c8082c3 feat(listener): add public landing page and deduplicate escapeHtml  ← HEAD
+18df09c refactor(web): replace any with typed API responses + tighten route id parsing  ← HEAD
+c8082c3 feat(listener): add public landing page and deduplicate escapeHtml
 bf1b6d3 docs: update HANDOFF for v1.1 bug-fix session
 7490c8b docs: add listener landing page design spec (HANDOFF B6)
 8eece9c feat(web): split view modules and align with paginated API responses
@@ -84,8 +85,10 @@ bdf1556 docs: design spec + implementation plan
 
 8. ✅ **`escapeHtml` 在 4 个 view 文件中重复定义** — 应抽取到 `ui.ts`
    - 修复：抽取到 `src/web/ui.ts`，4 个 view 改为 import（`c8082c3`）
-9. ❌ **前端类型定义缺失** — 大量 `any`
-10. ❌ **路由参数 `Number(id)` 宽松** — 无效字符串返回 NaN
+9. ✅ **前端类型定义缺失** — 大量 `any`
+   - 修复：新建 `src/web/types.ts` 统一前后端响应类型，`api-client.ts` 全部 `Promise<T>`；前端 6 处 `any` 全部去掉（`18df09c`）
+10. ✅ **路由参数 `Number(id)` 宽松** — 无效字符串返回 NaN
+   - 修复：新增 `parseId()` / `parsePositiveId()`，前端 4 处 + 后端 4 处 `Number()` 全部替换为带 400 的解析函数（`18df09c`）
 
 ## E2E 验证结果（本次会话完成）
 
@@ -102,7 +105,7 @@ bdf1556 docs: design spec + implementation plan
 
 ## v1.1 收尾（已完成）
 
-本次 v1 → v1.1 收尾共 8 个 commit（`c8082c3` / `bf1b6d3` / `7490c8b` / `8eece9c` / `d841f4f` / `0f8822b` / `3bd171c` / `33d1d5e` + 前一轮的 `7591d51` / `ae53f7d` / `cee815d` / `b951463` / `53149c4`），解决的问题对应 HANDOFF 第 61-83 行的 A1-A4、B5、B6、C8：
+本次 v1 → v1.1 收尾共 10 个 commit（`18df09c` / `c8082c3` / `bf1b6d3` / `7490c8b` / `8eece9c` / `d841f4f` / `0f8822b` / `3bd171c` / `33d1d5e` + 前一轮的 `7591d51` / `ae53f7d` / `cee815d` / `b951463` / `53149c4`），解决的问题对应 HANDOFF 第 61-83 行的 A1-A4、B5、B6、C8、C9、C10：
 
 - **A1** `/api/config` 不再返回明文 `sourcePassword`
 - **A2** 上传按 magic bytes 校验类型，支持 M4A 与未知扩展名
@@ -111,8 +114,10 @@ bdf1556 docs: design spec + implementation plan
 - **B5** dashboard LIVE/OFFLINE 与 listener 计数现在能正确反映后端状态
 - **B6** 听众落地页 `public/index.html` 已实现（深色主题 + HTML5 audio + graceful 无源降级）
 - **C8** `escapeHtml` 已从 4 个 view 抽取到 `ui.ts`
+- **C9** 前端 6 处 `any` 全部替换为 `src/web/types.ts` 中的强类型响应
+- **C10** 路由 `:id` 现在用 `parsePositiveId()` 校验，无效 ID 抛 400（前端用 `parseId()` + toast 兜底）
 
-未修复项（B7 / C9 / C10）保留在 "## 收尾发现的问题" 中，留待后续 v1.1.x。
+未修复项（B7）保留在 "## 收尾发现的问题" 中，留待后续 v1.1.x。
 
 ## 当前会话之前的对话 ID
 

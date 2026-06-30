@@ -5,7 +5,7 @@
 
 ## 当前状态
 
-**v1 + v1.1 收尾 + B7 扩展全部完成** ✅
+**v1 + v1.1 收尾 + B7 扩展 + C 修复 C11**全部完成 ✅
 
 设计规格（v1）：`docs/superpowers/specs/2026-06-29-radio-services-design.md`（830 行）
 实施计划（v1）：`docs/superpowers/plans/2026-06-29-radio-services.md`（4826 行）
@@ -59,7 +59,7 @@ d80a8dc feat: config loading + pino logger
 bdf1556 docs: design spec + implementation plan
 ```
 
-**测试**：91 passed (14 test files) · `pnpm typecheck` exit 0
+**测试**：99 passed (14 test files) · `pnpm typecheck` exit 0
 
 **Tasks 0-16 全部完成 + 完整走完两阶段审查**
 
@@ -96,6 +96,38 @@ bdf1556 docs: design spec + implementation plan
    - 测试：broadcaster 5 个新单测 + config 1 个 + e2e 2 个"切歌韧性"用例
    - 改动 5 个文件：broadcaster.ts / app.ts / config.ts / routes/config.ts / web/types.ts / index.html
    - 设计稿：`docs/superpowers/specs/2026-06-30-stream-wait-on-source.md`（673 行）
+
+12. ✅ **`FFmpegManager` 初始化顺序与设计规格不符** — `src/services/ffmpeg-manager.ts` 之前实现为 override → bundled → **system** → download → missing（注释自承顺序倒置以"减少不必要的网络"）。规格 `2026-06-29-radio-services-design.md` §3.1 与验收 #2/#3 明确要求"优先使用项目内下载的版本；下载失败时回退到系统 ffmpeg"
+   - 修复：把 system 兜底挪到 download 失败之后；正确顺序 override → bundled → download → system → missing
+   - 重写 `tests/integration/ffmpeg-manager.test.ts`：7 个测试覆盖规格 5 个优先级路径 + 进度事件；用 `vi.mock(downloader.downloadFfmpeg)` 隔离网络
+   - 改动 2 个文件：`src/services/ffmpeg-manager.ts`、`tests/integration/ffmpeg-manager.test.ts`
+
+13. ✅ **FFmpeg 面板：当数据源为 `system` 时应显示下载按钮，而非"已安装并可用"** — `src/web/views/ffmpeg-panel.ts` 之前只看 `status.available`，对 `bundled` / `override` / `system` 一律显示"✓ FFmpeg 已安装并可用"。这与上一项修复后的新行为（"system" 意味着下载失败回退）矛盾：用户看面板会以为没事，但实际上项目内无二进制、版本不受控。
+   - 修复：把"下载安装"卡片按 `status.source` 拆分三态：
+     - `bundled` / `override` → "✓ FFmpeg 已安装并可用"
+     - `system` → "⚠ 启动时下载失败，目前使用系统 FFmpeg。建议重新下载项目内版本以保证版本一致。" + 下载按钮
+     - `missing` → "FFmpeg 未安装，需要下载后才能使用录制功能。" + 下载按钮
+   - 改动 1 个文件：`src/web/views/ffmpeg-panel.ts`
+
+14. ✅ **点击"下载 FFmpeg"后 SSE 静默失败（`data: {"state":"idle"}` 后无任何更新）** — `FFmpegManager.triggerDownload()` 设 `forceDownload=true` 后调 `initialize()`，但 `initialize()` 的 reentrancy guard（`if (this.initializingPromise) return this.initializingPromise`）会**返回首次启动时缓存的 promise**，`forceDownload=true` 完全失效。后果：`doInitialize` 不再跑，`downloadFfmpeg` 从未被调用，`'download'` 事件从未触发。SSE 连接只能收到首次握手时的 `idle` 帧。
+   - 修复：`triggerDownload()` 在调 `initialize()` 之前重置 `this.initializingPromise = null`，让 forceDownload 真正走到下载分支
+   - 新增回归测试 "triggerDownload() forces a fresh download after initial initialize()" — verify 模式下 fail（`downloadFfmpeg` calls: 0≠1）+ 修复下 pass；这是确凿的 bug 证据
+   - 改动 1 个文件：`src/services/ffmpeg-manager.ts`（1 行 + 注释）
+   - 测试：94 passed (14 test files) · `pnpm typecheck` exit 0
+
+15. ✅ **macOS 下载 ffmpeg 404** — 初版以为 BtbN 还在发布 macOS 只是路径换了（`ffmpeg-n8.1.1-latest-macos64-gpl-8.1.1.tar.xz`），实则 2026 年探测发现 BtbN 已**完全停止发布 macOS 构建**（README 明文 "Static Windows (x86_64) and Linux (x86_64) Builds"；最近 25 个 release 0 个 macOS asset）。
+   - 修复：macOS 下载源切到 **osxexperts.net**（Helmut Tessarek 维护，`ffmpeg-static` README 引用源）
+   - 文件命名约定：`ffmpeg<majorMinor>{arm,intel}.zip`（e.g. 8.1 → `ffmpeg81arm.zip` for Apple Silicon，8.0 → `ffmpeg80intel.zip` for Intel）
+   - macOS 不提供 SHA256 sidecar → 跳过 SHA256 校验（其他平台保持原逻辑）
+   - macOS 用 `unzip` 而非 `tar -xJ`（zip 容器 vs tar.xz）
+   - 新增 `RADIO_FFMPEG_MAC_URL` 环境变量支持自定义 macOS 镜像
+   - `resolveLatestFfmpegVersion()` 适配 HTML 分支（macOS 解析 `ffmpegXX<arm|intel>.zip` 链接，**不再**依赖 BtbN tags API）
+   - `FFmpegManager.initialize()` 按平台分流：macOS 走 osxexperts，其他平台仍 BtbN
+   - 默认 `config.ffmpeg.version`：macOS = `'8.1'`，其他 = `'7.1'`
+   - 新增 5 个单元测试（macOS URL × 3、HTML 解析、空解析）+ 既有 4 个
+   - 改动 3 个文件：`src/services/ffmpeg-downloader.ts`、`src/services/ffmpeg-manager.ts`、`src/config.ts`
+   - 测试：103 passed (14 test files) · `pnpm typecheck` exit 0
+   - 端到端验证：HTTP Range 远程解析 ZIP EOCD 拿到真实文件大小 22,547,365 字节（21.5 MB）、文件名 `ffmpeg`、压缩方法 deflate
 
 ### C. 代码组织
 

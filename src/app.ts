@@ -81,10 +81,20 @@ export async function buildApp(
   const pushProcs: import('child_process').ChildProcess[] = []
 
   sourceReceiver.on('session-start', (session) => {
+    // Close the previous local PassThrough (if any) before opening a new one.
+    // The broadcaster keeps existing listeners alive across session switches
+    // (it only un-subscribes from the old source stream).
+    if (sourceStream && !sourceStream.destroyed) {
+      sourceStream.end()
+    }
     sourceStream = new PassThrough()
-    archiver.start(sourceStream).catch((err) =>
-      logger.error({ err: err instanceof Error ? err.message : String(err) }, 'archiver start failed'),
-    )
+    // Start archiver only on the very first source. Subsequent switches
+    // re-use the same archiver instance so listeners don't observe a cut.
+    if (!archiver.isRunning()) {
+      archiver.start(sourceStream).catch((err) =>
+        logger.error({ err: err instanceof Error ? err.message : String(err) }, 'archiver start failed'),
+      )
+    }
     broadcaster.pipeFrom(sourceStream, session)
     wsHub.emitEvent('source-start', session)
   })
@@ -96,11 +106,14 @@ export async function buildApp(
   })
 
   sourceReceiver.on('session-end', (session) => {
+    // End the local PassThrough. The broadcaster's pipeFrom handler will
+    // automatically unbind from this (now-ending) source — listeners survive.
     if (sourceStream && !sourceStream.destroyed) {
       sourceStream.end()
     }
     sourceStream = null
-    archiver.stop().catch(() => {})
+    // Archiver is intentionally NOT stopped here — it persists across session
+    // switches. The next session-start reuses the same archiver.
     wsHub.emitEvent('source-end', { sessionId: session.id })
   })
 
@@ -133,6 +146,32 @@ export async function buildApp(
     listeners: { count: listenerManager.countCurrent() },
   }))
 
+  /** Stop and remove every push ffmpeg subprocess. Used by start/stop paths. */
+  async function stopAllPushProcs(): Promise<{ killed: number }> {
+    const snapshot = [...pushProcs]
+    let killed = 0
+    for (const proc of snapshot) {
+      try {
+        if (proc.exitCode === null && proc.signalCode === null) {
+          proc.kill('SIGTERM')
+          killed += 1
+        }
+      } catch {
+        // process already gone
+      }
+    }
+    // wait 500ms then SIGKILL survivors
+    await new Promise((r) => setTimeout(r, 500))
+    for (const proc of snapshot) {
+      try {
+        if (proc.exitCode === null && proc.signalCode === null) {
+          proc.kill('SIGKILL')
+        }
+      } catch {}
+    }
+    return { killed }
+  }
+
   app.post('/api/source/start', async (request) => {
     const body = request.body as { type: 'file' | 'playlist'; id: number | string }
     if (!body.type || body.id === undefined || body.id === null) {
@@ -163,6 +202,11 @@ export async function buildApp(
     }
 
     if (!inputPath) throw new Error('no input')
+
+    // Stop any existing push ffmpeg before starting a new one so listeners
+    // don't hear two streams mixed together. The old ffmpeg's session-end
+    // flows through the broadcaster's unbindSource path — listeners survive.
+    await stopAllPushProcs()
 
     const ffmpegStatus = ffmpegManager.getStatus()
     if (!ffmpegStatus.available || !ffmpegStatus.path) {
@@ -195,27 +239,11 @@ export async function buildApp(
   })
 
   app.post('/api/source/stop', async () => {
-    const snapshot = [...pushProcs]
-    let killed = 0
-    for (const proc of snapshot) {
-      try {
-        if (proc.exitCode === null && proc.signalCode === null) {
-          proc.kill('SIGTERM')
-          killed += 1
-        }
-      } catch {
-        // process already gone
-      }
-    }
-    // wait 500ms then SIGKILL survivors
-    await new Promise((r) => setTimeout(r, 500))
-    for (const proc of snapshot) {
-      try {
-        if (proc.exitCode === null && proc.signalCode === null) {
-          proc.kill('SIGKILL')
-        }
-      } catch {}
-    }
+    const { killed } = await stopAllPushProcs()
+    // Closing all listeners triggers the client-side audio 'error' event,
+    // which kicks the landing-page reconnect / poll loop.
+    broadcaster.endAll()
+    // Archiver persists across sessions; only stop it on explicit shutdown.
     return { ok: true, killed }
   })
 

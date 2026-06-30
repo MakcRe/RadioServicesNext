@@ -10,11 +10,14 @@
 设计规格：`docs/superpowers/specs/2026-06-29-radio-services-design.md`（830 行）
 实施计划：`docs/superpowers/plans/2026-06-29-radio-services.md`（4826 行）
 
-### 已完成 commits（24 个）
+### 已完成 commits（27 个）
 
-v1.1 收尾（5 个新）：
+v1.1 收尾（8 个）：
 ```
-8eece9c feat(web): split view modules and align with paginated API responses  ← HEAD
+c8082c3 feat(listener): add public landing page and deduplicate escapeHtml  ← HEAD
+bf1b6d3 docs: update HANDOFF for v1.1 bug-fix session
+7490c8b docs: add listener landing page design spec (HANDOFF B6)
+8eece9c feat(web): split view modules and align with paginated API responses
 d841f4f fix(dashboard): read isLive from broadcaster.isLive, not source.connected
 0f8822b fix(source): pipe ffmpeg stdout to broadcaster instead of HTTP loopback
 3bd171c test: fix wrong import type path
@@ -73,12 +76,14 @@ bdf1556 docs: design spec + implementation plan
 
 5. ✅ **`updateStatusIndicator` 前端无效** — `src/web/main.ts` 检查 `source.connected`，但后端 `/api/status` 不返回该字段
    - 修复：dashboard 改读 `broadcaster.isLive` / `listeners.count`，并把视图按模块拆分（`d841f4f` + `8eece9c`）
-6. ❌ **`public/index.html` 听众落地页缺失** — README 提到但未实现
+6. ✅ **`public/index.html` 听众落地页缺失** — README 提到但未实现
+   - 修复：`public/index.html` 含深色主题 HTML5 `<audio>` 播放器，`preload="none"`，graceful 降级（`c8082c3`）
 7. ❌ **`/stream` 无源时立即 503** — 应该等待 source 启动而非拒绝（取决于产品决策）
 
 ### C. 代码组织
 
-8. ❌ **`escapeHtml` 在 4 个 view 文件中重复定义** — 应抽取到 `ui.ts`
+8. ✅ **`escapeHtml` 在 4 个 view 文件中重复定义** — 应抽取到 `ui.ts`
+   - 修复：抽取到 `src/web/ui.ts`，4 个 view 改为 import（`c8082c3`）
 9. ❌ **前端类型定义缺失** — 大量 `any`
 10. ❌ **路由参数 `Number(id)` 宽松** — 无效字符串返回 NaN
 
@@ -97,15 +102,17 @@ bdf1556 docs: design spec + implementation plan
 
 ## v1.1 收尾（已完成）
 
-本次 v1 → v1.1 收尾共 5 个 commit（`8eece9c` / `d841f4f` / `0f8822b` / `3bd171c` / `33d1d5e` + 前一轮的 `7591d51` / `ae53f7d` / `cee815d` / `b951463` / `53149c4`），解决的问题对应 HANDOFF 第 61-77 行的 A1-A4、B5：
+本次 v1 → v1.1 收尾共 8 个 commit（`c8082c3` / `bf1b6d3` / `7490c8b` / `8eece9c` / `d841f4f` / `0f8822b` / `3bd171c` / `33d1d5e` + 前一轮的 `7591d51` / `ae53f7d` / `cee815d` / `b951463` / `53149c4`），解决的问题对应 HANDOFF 第 61-83 行的 A1-A4、B5、B6、C8：
 
 - **A1** `/api/config` 不再返回明文 `sourcePassword`
 - **A2** 上传按 magic bytes 校验类型，支持 M4A 与未知扩展名
 - **A3** ffmpeg 推流进程走精确 PID 管理，弃用 `pkill -f`
 - **A4** 默认密码 `"hackme"` 启动时 warn
 - **B5** dashboard LIVE/OFFLINE 与 listener 计数现在能正确反映后端状态
+- **B6** 听众落地页 `public/index.html` 已实现（深色主题 + HTML5 audio + graceful 无源降级）
+- **C8** `escapeHtml` 已从 4 个 view 抽取到 `ui.ts`
 
-未修复项（B6 / B7 / C8 / C9 / C10）保留在 "## 收尾发现的问题" 中，留待后续 v1.1.x。
+未修复项（B7 / C9 / C10）保留在 "## 收尾发现的问题" 中，留待后续 v1.1.x。
 
 ## 当前会话之前的对话 ID
 

@@ -307,15 +307,20 @@ export class FFmpegManager extends EventEmitter {
     }
     for (const e of entries) {
       if (!e.isDirectory()) continue
+      if (!/^\d+\.\d+/.test(e.name)) continue
       const binPath = join(versionsRoot, e.name, this.binaryName())
       if (!(await this.canExecute(binPath))) continue
       installed.push(e.name)
     }
     return installed.sort((a, b) => {
-      const [amaj, amin] = a.split('.').map(Number)
-      const [bmaj, bmin] = b.split('.').map(Number)
-      if (bmaj !== amaj) return bmaj - amaj
-      return bmin - amin
+      const partsA = a.split('.').map(Number)
+      const partsB = b.split('.').map(Number)
+      for (let i = 0; i < Math.max(partsA.length, partsB.length); i++) {
+        const da = partsA[i] ?? 0
+        const db = partsB[i] ?? 0
+        if (db !== da) return db - da
+      }
+      return 0
     })
   }
 

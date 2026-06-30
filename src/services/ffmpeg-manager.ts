@@ -32,15 +32,18 @@ export interface FFmpegManagerOptions {
 }
 
 /**
- * FFmpegManager 初始化顺序（按 spec `2026-06-29-radio-services-design.md` 第 156 行）：
+ * FFmpegManager 初始化顺序（v1.2 — 启动不再自动下载）：
  * 1. override (调试显式指定路径 — 一切其它逻辑短路)
  * 2. bundled (`.versions/{version}/ffmpeg` 已存在且可执行 → 复用项目内二进制)
- * 3. download (bundled 缺失 → 主动从 BtbN 下载；失败才进入下一步)
- * 4. system fallback (仅当下载失败时回退；正常情况下不会触碰 PATH 上的 ffmpeg)
- * 5. missing (都没有 → 启动失败)
+ * 3. system (回退到 PATH 上的 ffmpeg — 启动必须快速，禁止阻塞网络)
+ * 4. missing (都没有 → 控制台报警 + 管理面板提供"下载 FFmpeg"按钮)
  *
- * 第 3 步的下载优先于第 4 步系统兜底：spec 明确"优先使用项目内下载的版本；
- * 下载失败时回退到系统 ffmpeg；都没有则启动失败"。
+ * 启动流程**不**调用 downloadFfmpeg——网络慢的机器启动时不应该卡在 21 MB
+ * 下载上。下载由用户主动通过 `/admin` → FFmpeg 面板触发（FFmpegManager.triggerDownload），
+ * 失败/缺失情况下管理面板"下载安装"卡片显示。
+ *
+ * 第 3 步改为"active fallback"而非"download 失败的兜底"——把系统 ffmpeg
+ * 当成合理来源（很多部署直接装在系统里），不是临时过渡。
  */
 export class FFmpegManager extends EventEmitter {
   private status: FFmpegStatus = {
@@ -135,40 +138,7 @@ export class FFmpegManager extends EventEmitter {
       }
     }
 
-    // 3. Download (BtbN/FFmpeg-Builds → bin/ffmpeg/.versions/{version}/)
-    try {
-      this.downloading = true
-      const config: AppConfig = {
-        db: { path: '' },
-        server: { host: '0.0.0.0', port: 8000 },
-        auth: { sourcePassword: '' },
-        ffmpeg: { version: this.opts.version, sourceUrl: this.opts.downloadUrl },
-        archive: { directory: '', segmentDurationSec: 0, retentionDays: 0, minFreeSpaceMB: 0 },
-        playlist: { uploadDir: '', maxFileSizeMB: 0, allowedExtensions: [] },
-        logging: { directory: '', level: '', retentionDays: 0 },
-        stream: { pollIntervalMs: 5000, pollIntervalMaxMs: 30000 },
-      }
-      const result = await downloadFfmpeg(
-        config,
-        this.opts.binRoot,
-        (state: DownloadState) => this.emit('download', state),
-      )
-      this.downloading = false
-      this.forceDownload = false
-      this.status = {
-        available: true,
-        source: 'bundled',
-        path: result.path,
-        version: result.version,
-      }
-      return this.status
-    } catch {
-      this.downloading = false
-      this.forceDownload = false
-      // 走下一步：system 兜底
-    }
-
-    // 4. System fallback (仅当下载失败时回退)
+    // 3. System fallback (PATH 上的 ffmpeg — 启动不再下载，避免慢网络阻塞)
     // 当 systemFallbackPath 显式给出时，只尝试该路径 — 不另外 `which ffmpeg` —
     // 否则测试若把不存在的显式路径传入，会被环境里的真实系统二进制默默替代并误报 "available"。
     const sysCandidates: string[] = []
@@ -190,9 +160,47 @@ export class FFmpegManager extends EventEmitter {
       }
     }
 
-    // 5. Missing — 启动失败
+    // 4. Missing — 启动失败但服务不中断
+    // 不再 throw；服务正常启动，FFmpeg 相关功能不可用。
+    // 控制台打醒目横幅 + 提示用户在管理面板触发下载。
     this.status = { available: false, source: 'missing', path: null, version: null }
+    this.printMissingBanner()
     return this.status
+  }
+
+  private printMissingBanner(): void {
+    // Print to stderr so it stands out from the regular pino log stream.
+    // Avoid unicode box-drawing chars so it stays readable in any terminal.
+    const lines = [
+      '',
+      '================================================================',
+      '  [FFmpeg] NOT FOUND',
+      '----------------------------------------------------------------',
+      `  No ffmpeg in ${this.opts.binRoot}/.versions/${this.opts.version}/`,
+      '  and no `ffmpeg` on PATH.',
+      '',
+      '  Service is still running but recording / source push features',
+      '  will not work until ffmpeg is installed.',
+      '',
+      '  To install: open the admin UI (FFmpeg panel) and click',
+      '  "Download FFmpeg". The download runs in the background and',
+      '  does not block the server.',
+      '',
+      '  Or manually place a binary at the expected path, or set',
+      '  FFMPEG_PATH_OVERRIDE in your env / config.',
+      '================================================================',
+      '',
+    ]
+    process.stderr.write(lines.join('\n'))
+    // Also surface via pino so log aggregators pick it up.
+    this.opts.logger?.error(
+      {
+        binRoot: this.opts.binRoot,
+        expectedVersion: this.opts.version,
+        adminHint: 'POST /api/ffmpeg/download (or use the admin UI)',
+      },
+      '[ffmpeg] not available — service continues but recording/source features are disabled until ffmpeg is installed',
+    )
   }
 
   getStatus(): FFmpegStatus {
@@ -209,14 +217,40 @@ export class FFmpegManager extends EventEmitter {
 
   async triggerDownload(): Promise<void> {
     if (this.downloading) return
-    // Force a fresh initialize(): the cached initializingPromise would otherwise
-    // short-circuit before the bundled-skip check fires (see doInitialize step 2),
-    // so a re-trigger after a previous boot would silently re-resolve the cached
-    // status without ever calling downloadFfmpeg — and the SSE event stream would
-    // only ever see the initial { state: 'idle' }.
-    this.initializingPromise = null
-    this.forceDownload = true
-    await this.initialize()
+    // v1.2: download is no longer part of initialize() (which now only does
+    // override → bundled → system → missing). triggerDownload() calls
+    // downloadFfmpeg directly so the user-initiated download is independent
+    // of the startup sequence.
+    //
+    // On success: update status to 'bundled' so subsequent calls to
+    // getStatus() reflect the installed binary. On failure: leave status
+    // alone (the user can see the error via the SSE stream).
+    this.downloading = true
+    try {
+      const config: AppConfig = {
+        db: { path: '' },
+        server: { host: '0.0.0.0', port: 8000 },
+        auth: { sourcePassword: '' },
+        ffmpeg: { version: this.opts.version, sourceUrl: this.opts.downloadUrl },
+        archive: { directory: '', segmentDurationSec: 0, retentionDays: 0, minFreeSpaceMB: 0 },
+        playlist: { uploadDir: '', maxFileSizeMB: 0, allowedExtensions: [] },
+        logging: { directory: '', level: '', retentionDays: 0 },
+        stream: { pollIntervalMs: 5000, pollIntervalMaxMs: 30000 },
+      }
+      const result = await downloadFfmpeg(
+        config,
+        this.opts.binRoot,
+        (state: DownloadState) => this.emit('download', state),
+      )
+      this.status = {
+        available: true,
+        source: 'bundled',
+        path: result.path,
+        version: result.version,
+      }
+    } finally {
+      this.downloading = false
+    }
   }
 
   private binaryName(): string {

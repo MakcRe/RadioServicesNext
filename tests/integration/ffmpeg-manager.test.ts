@@ -91,28 +91,8 @@ describe('FFmpegManager (per spec 2026-06-29 §3.1)', () => {
       expect(status.available).toBe(true)
     })
 
-    it('3. downloads from BtbN when bundled is absent and system binary exists (spec: project-bundled wins)', async () => {
+    it('3. falls back to system ffmpeg when bundled is absent (no startup download)', async () => {
       const systemBin = fakeBinaryPath()
-      const binRoot = join(tempDir, 'bin')
-      mockDownloadSucceed(binRoot, '7.1', fakeBinaryPath())
-
-      const mgr = new FFmpegManager({
-        binRoot,
-        version: '7.1',
-        downloadUrl: 'https://example.invalid/',
-        systemFallbackPath: systemBin,
-      })
-
-      const status = await mgr.initialize()
-      expect(status.source).toBe('bundled')
-      expect(status.path).not.toBe(systemBin)
-      expect(status.available).toBe(true)
-    })
-
-    it('4. falls back to system ffmpeg ONLY when download fails', async () => {
-      const systemBin = fakeBinaryPath()
-      mockDownloadFail()
-
       const mgr = new FFmpegManager({
         binRoot: join(tempDir, 'bin'),
         version: '7.1',
@@ -126,9 +106,7 @@ describe('FFmpegManager (per spec 2026-06-29 §3.1)', () => {
       expect(status.available).toBe(true)
     })
 
-    it('5. reports missing when bundled absent, download fails, and no system binary', async () => {
-      mockDownloadFail()
-
+    it('4. reports missing when bundled absent AND system fallback absent', async () => {
       const mgr = new FFmpegManager({
         binRoot: join(tempDir, 'bin'),
         version: '7.1',
@@ -158,7 +136,9 @@ describe('FFmpegManager (per spec 2026-06-29 §3.1)', () => {
       expect(mgr.getStatus().available).toBe(true)
     })
 
-    it('emits progress events during download', async () => {
+    it('emits progress events during triggerDownload()', async () => {
+      // v1.2: initialize() no longer downloads. Progress events fire only
+      // from the user-initiated triggerDownload() path.
       const binRoot = join(tempDir, 'bin')
       mockDownloadSucceed(binRoot, '7.1', fakeBinaryPath())
 
@@ -166,48 +146,47 @@ describe('FFmpegManager (per spec 2026-06-29 §3.1)', () => {
         binRoot,
         version: '7.1',
         downloadUrl: 'https://example.invalid/',
+        systemFallbackPath: '/nonexistent/ffmpeg',
       })
 
+      await mgr.initialize()
       const events: string[] = []
       mgr.on('download', (s) => events.push(s.state))
 
-      await mgr.initialize()
+      await mgr.triggerDownload()
       expect(events).toContain('downloading')
       expect(events).toContain('complete')
     })
 
     /**
-     * Regression: /admin "下载 FFmpeg" 按钮失败问题
+     * Regression: /admin "下载 FFmpeg" 按钮 — verify triggerDownload fires
+     * download events and updates status to bundled even after initialize()
+     * has completed (which previously cached the result and short-circuited).
      *
-     * 启动时 initialize() 完成后会缓存到 `initializingPromise`。
-     * 之后任何 initialize() 调用都直接返回这个缓存的 promise — 即便
-     * `forceDownload=true`。后果：POST /api/ffmpeg/download 触发后，doInitialize
-     * 从未跑到 download 分支，downloadFfmpeg 永远不被调，SSE 上只看到初始的
-     * { state: 'idle' }，前端面板无任何更新。
-     *
-     * triggerDownload() 必须能强制重跑，绕过缓存。
+     * The triggerDownload reentrancy guard was: clearing initializingPromise
+     * and setting forceDownload=true. As of v1.2 the implementation changed
+     * — triggerDownload now calls downloadFfmpeg directly, sidestepping
+     * initialize() entirely. The behavioural contract ("user-initiated
+     * download works after boot") is preserved.
      */
-    it('triggerDownload() forces a fresh download after initial initialize() (fixes SSE silent failure)', async () => {
-      // 第一次启动：仅 system ffmpeg 可用；初始化走 bundled-miss → download-fail → system 分支
-      const systemBin = fakeBinaryPath()
-      mockDownloadFail('first-time download failed')
-
+    it('triggerDownload() works after initial initialize() with no ffmpeg present', async () => {
+      // First boot: bundled absent, system fallback also absent. Status: missing.
       const binRoot = join(tempDir, 'bin')
       const mgr = new FFmpegManager({
         binRoot,
         version: '7.1',
         downloadUrl: 'https://example.invalid/',
-        systemFallbackPath: systemBin,
+        systemFallbackPath: '/nonexistent/ffmpeg',
       })
 
       let initialStatus = await mgr.initialize()
-      expect(initialStatus.source).toBe('system')
+      expect(initialStatus.source).toBe('missing')
+      expect(initialStatus.available).toBe(false)
 
-      // 第二次手动触发：网络恢复了。downloadFfmpeg 应当被调一次。
+      // User clicks "Download FFmpeg" in admin UI. downloadFfmpeg must fire.
       const events: string[] = []
       mgr.on('download', (s) => events.push(s.state))
       const calls: number[] = []
-      // 重新 spy — 之前的 mock 在 cross-test 状态可能丢
       vi.spyOn(downloader, 'downloadFfmpeg').mockImplementation(async (_c, root, onProgress) => {
         calls.push(Date.now())
         onProgress({
@@ -233,7 +212,8 @@ describe('FFmpegManager (per spec 2026-06-29 §3.1)', () => {
       expect(events).toContain('complete')
       const status = mgr.getStatus()
       expect(status.source).toBe('bundled')
-      expect(status.path).not.toBe(systemBin)
+      expect(status.available).toBe(true)
+      expect(status.path).toContain(join('.versions', '7.1', 'ffmpeg'))
     })
   })
 })

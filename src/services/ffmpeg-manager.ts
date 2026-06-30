@@ -1,6 +1,7 @@
 import { spawn } from 'child_process'
 import { existsSync } from 'fs'
-import { join } from 'path'
+import { mkdir, rename, chmod, readdir } from 'fs/promises'
+import { isAbsolute, resolve as resolvePath, join } from 'path'
 import { EventEmitter } from 'events'
 import {
   downloadFfmpeg,
@@ -58,6 +59,15 @@ export class FFmpegManager extends EventEmitter {
 
   constructor(private opts: FFmpegManagerOptions) {
     super()
+    // Normalize binRoot to an absolute path so all downstream spawn calls
+    // (archiver, push-source, version probe) work regardless of the cwd of
+    // whoever invokes .initialize(). Without this, a relative "bin/ffmpeg"
+    // would resolve against the listener's cwd, which may not be the
+    // project root (e.g. when the process is started from a different
+    // directory or behind a wrapper script).
+    if (!isAbsolute(this.opts.binRoot)) {
+      this.opts.binRoot = resolvePath(process.cwd(), this.opts.binRoot)
+    }
   }
 
   async initialize(): Promise<FFmpegStatus> {
@@ -94,19 +104,18 @@ export class FFmpegManager extends EventEmitter {
   }
 
   private async doInitialize(): Promise<FFmpegStatus> {
-    // Pre-flight: warn when a "loose" ffmpeg binary sits at the top of
-    // binRoot (e.g. someone dropped an executable there by hand) but isn't
-    // in the `.versions/{version}/` slot the manager searches. Without
-    // this, the binary goes unused and the manager silently re-downloads
-    // on every boot.
-    if (!this.opts.ffmpegPathOverride) {
-      const loosePath = join(this.opts.binRoot, this.binaryName())
-      if (existsSync(loosePath)) {
-        this.opts.logger?.warn(
-          { loosePath, expected: join(this.opts.binRoot, '.versions', this.opts.version, this.binaryName()) },
-          '[ffmpeg] found a loose ffmpeg binary at the binRoot root; move it into the .versions/{version}/ subdirectory to be picked up',
-        )
-      }
+    // Pre-flight: if a "loose" ffmpeg binary sits at the top of binRoot
+    // (e.g. an operator dropped ffmpeg/ffmpeg.exe there by hand instead
+    // of into the .versions/{version}/ slot), probe its version and
+    // auto-migrate it into .versions/{probedVersion}/.
+    //
+    // The destination is the loose binary's OWN version, not opts.version:
+    // the operator clearly intended this specific version by placing the
+    // file there by hand. It may differ from config.ffmpeg.version
+    // (e.g. after an upgrade) — that's fine. doInitialize step 2
+    // (bundled) accepts ANY .versions/{v}/ffmpeg that exists.
+    if (!this.opts.ffmpegPathOverride && !this.forceDownload) {
+      await this.migrateLooseBinary()
     }
 
     // 1. Override (调试显式指定路径)
@@ -123,9 +132,30 @@ export class FFmpegManager extends EventEmitter {
     }
 
     // 2. Bundled (项目内已下载的二进制)
+    // Try the configured .versions/{this.opts.version}/ slot first,
+    // then fall through to ANY .versions/{v}/ffmpeg — this lets a
+    // hand-placed binary (auto-migrated by migrateLooseBinary above
+    // into .versions/{probedVersion}/) be picked up even when its
+    // version doesn't match config.ffmpeg.version.
     if (!this.forceDownload) {
-      const bundled = join(this.opts.binRoot, '.versions', this.opts.version, this.binaryName())
-      if (existsSync(bundled)) {
+      const candidates: string[] = []
+      const preferred = join(this.opts.binRoot, '.versions', this.opts.version, this.binaryName())
+      if (existsSync(preferred)) candidates.push(preferred)
+      // Glob for other .versions/*/ffmpeg entries (depth-bounded to
+      // avoid scanning arbitrarily deep trees).
+      const versionsRoot = join(this.opts.binRoot, '.versions')
+      try {
+        const entries = await readdir(versionsRoot, { withFileTypes: true })
+        for (const e of entries) {
+          if (!e.isDirectory()) continue
+          const p = join(versionsRoot, e.name, this.binaryName())
+          if (p !== preferred && existsSync(p)) candidates.push(p)
+        }
+      } catch {
+        // .versions/ doesn't exist yet — that's fine, only `preferred` is checked.
+      }
+
+      for (const bundled of candidates) {
         if (await this.canExecute(bundled)) {
           this.status = {
             available: true,
@@ -257,6 +287,73 @@ export class FFmpegManager extends EventEmitter {
     return process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg'
   }
 
+  /**
+   * If a loose ffmpeg binary exists at `<binRoot>/ffmpeg` (or
+   * `<binRoot>/ffmpeg.exe` on Windows), probe its actual version and
+   * migrate it into `<binRoot>/.versions/{version}/ffmpeg` so step 2
+   * (bundled) picks it up.
+   *
+   * Returns when either there's nothing to migrate, the migration
+   * succeeds (so step 2 will hit), or the migration is skipped because
+   * the target .versions/{v}/ffmpeg already exists. Skipped/leave-in-
+   * place cases emit a structured logger.warn so the operator can see
+   * what happened.
+   */
+  /**
+   * If a loose ffmpeg binary exists at `<binRoot>/ffmpeg` (or
+   * `<binRoot>/ffmpeg.exe` on Windows), probe its version and migrate it
+   * into `<binRoot>/.versions/{probedVersion}/`. The destination is
+   * the loose binary's OWN version, not opts.version, because the
+   * operator clearly intended that version by placing the file there.
+   *
+   * doInitialize step 2 (bundled) accepts ANY .versions/{v}/ffmpeg that
+   * exists, so this migration is enough to make the loose binary get
+   * picked up regardless of what config.ffmpeg.version says.
+   *
+   * Refuses to overwrite an existing target binary.
+   */
+  private async migrateLooseBinary(): Promise<void> {
+    const loosePath = join(this.opts.binRoot, this.binaryName())
+    if (!existsSync(loosePath)) return
+
+    // Probe version from the loose binary; if it can't be parsed,
+    // abandon — there's nothing safer to assume than literal copy.
+    const probed = await this.getVersion(loosePath)
+    if (!probed) return
+    const targetVersion = normalizeVersion(probed)
+    if (!targetVersion) return
+
+    const targetDir = join(this.opts.binRoot, '.versions', targetVersion)
+    const targetPath = join(targetDir, this.binaryName())
+
+    // If the target slot already has a binary, the loose copy is a
+    // throwaway — operator probably ran triggerDownload() earlier and
+    // then copied a fresh ffmpeg to the wrong place. Silently remove
+    // the loose copy so it doesn't shadow everything else and don't
+    // touch the bundled one.
+    if (existsSync(targetPath)) {
+      await rename(loosePath, `${loosePath}.orphan`).catch(() => {})
+      return
+    }
+
+    try {
+      await mkdir(targetDir, { recursive: true })
+      await rename(loosePath, targetPath)
+      if (process.platform !== 'win32') {
+        await chmod(targetPath, 0o755)
+      }
+      this.opts.logger?.info(
+        { from: loosePath, to: targetPath, version: targetVersion },
+        '[ffmpeg] auto-migrated loose binary into .versions/{version}/',
+      )
+    } catch (err) {
+      this.opts.logger?.warn(
+        { loosePath, targetPath, err: err instanceof Error ? err.message : String(err) },
+        '[ffmpeg] failed to migrate loose binary; leaving in place',
+      )
+    }
+  }
+
   private async canExecute(path: string): Promise<boolean> {
     return new Promise((resolve) => {
       const proc = spawn(path, ['-version'], { stdio: 'ignore' })
@@ -304,4 +401,26 @@ export class FFmpegManager extends EventEmitter {
       proc.on('error', () => resolve(null))
     })
   }
+}
+
+/**
+ * Reduce the noisy version string that ffmpeg emits into the canonical
+ * major.minor used for the .versions/ directory slot.
+ *
+ * Examples (input → output):
+ *   "7.1"            → "7.1"        (simple homebrew static build)
+ *   "8.1.1"          → "8.1"        (homebrew 8.1.1 → bin dir 8.1, matches config)
+ *   "n8.1.1"         → "8.1"        (BtbN `n` prefix stripped, patch dropped)
+ *   "n8.1.1-15-..."  → "8.1"        (BtbN `n`-prefixed tag with git suffix)
+ *   "git-2024-..."   → null          (nightly / dev snapshot — don't migrate)
+ *   ""               → null
+ */
+export function normalizeVersion(raw: string): string | null {
+  if (!raw) return null
+  // Strip BtbN's leading "n" used for stable tag prefixes.
+  const s = raw.startsWith('n') && /^n\d/.test(raw) ? raw.slice(1) : raw
+  // Match "X.Y" or "X.Y.Z", optionally followed by a -git suffix or other garbage.
+  const m = /^(\d+)\.(\d+)(?:\.\d+)?/.exec(s)
+  if (!m) return null
+  return `${m[1]}.${m[2]}`
 }

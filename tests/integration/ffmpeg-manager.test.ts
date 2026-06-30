@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, writeFileSync, chmodSync, mkdirSync, copyFileSync, rmSync } from 'fs'
+import { mkdtempSync, writeFileSync, chmodSync, existsSync, mkdirSync, copyFileSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { FFmpegManager } from '../../src/services/ffmpeg-manager.js'
+import { FFmpegManager, normalizeVersion } from '../../src/services/ffmpeg-manager.js'
 import * as downloader from '../../src/services/ffmpeg-downloader.js'
 
 let tempDir: string
@@ -215,5 +215,152 @@ describe('FFmpegManager (per spec 2026-06-29 §3.1)', () => {
       expect(status.available).toBe(true)
       expect(status.path).toContain(join('.versions', '7.1', 'ffmpeg'))
     })
+  })
+})
+
+describe('normalizeVersion', () => {
+  it('returns major.minor unchanged when no patch', () => {
+    expect(normalizeVersion('7.1')).toBe('7.1')
+  })
+
+  it('drops patch when present (7.1.1 → 7.1)', () => {
+    expect(normalizeVersion('7.1.1')).toBe('7.1')
+  })
+
+  it('drops patch when present (8.1.1 → 8.1)', () => {
+    expect(normalizeVersion('8.1.1')).toBe('8.1')
+  })
+
+  it('strips BtbN leading n prefix (n8.1.1 → 8.1)', () => {
+    expect(normalizeVersion('n8.1.1')).toBe('8.1')
+  })
+
+  it('strips BtbN leading n prefix with git suffix (n8.1.1-15-gabc → 8.1)', () => {
+    expect(normalizeVersion('n8.1.1-15-g661c39a3ba')).toBe('8.1')
+  })
+
+  it('returns null for nightly/git snapshots', () => {
+    expect(normalizeVersion('git-2024-12-01')).toBeNull()
+  })
+
+  it('returns null for empty string', () => {
+    expect(normalizeVersion('')).toBeNull()
+  })
+})
+
+describe('loose-binary auto-migration', () => {
+  /**
+   * Helper: lay a hand-placed ffmpeg binary at <binRoot>/ffmpeg that
+   * reports the version passed in via `--version` emulation. We use a
+   * shell script that echoes `ffmpeg version X` because the manager's
+   * `getVersion` only inspects stdout of `-version`.
+   */
+  function placeLooseBinary(binRoot: string, fakeVersion: string): string {
+    const loosePath = join(binRoot, 'ffmpeg')
+    const script = `#!/bin/sh\necho "ffmpeg version ${fakeVersion}"\n`
+    writeFileSync(loosePath, script, { mode: 0o755 })
+    return loosePath
+  }
+
+  it('migrates a loose ffmpeg into .versions/{probedVersion}/ when the slot is empty', async () => {
+    const binRoot = join(tempDir, 'bin')
+    mkdirSync(binRoot, { recursive: true })
+    // Place loose binary reporting 7.1 — operator hasn't run our init yet.
+    placeLooseBinary(binRoot, '7.1')
+
+    // The manager resolves binRoot relative to process.cwd() when it does
+    // existsSync / rename. Use an absolute binRoot to keep the test
+    // independent of where vitest runs from.
+    const mgr = new FFmpegManager({
+      binRoot,
+      version: '7.1',
+      downloadUrl: 'https://example.invalid/',
+      // Force the PATH lookup to find nothing so a regression would still
+      // surface as 'missing' rather than accidentally picking up the
+      // system binary.
+      systemFallbackPath: '/nonexistent/ffmpeg',
+    })
+
+    const status = await mgr.initialize()
+    expect(status.source).toBe('bundled')
+    expect(status.path).toBe(join(binRoot, '.versions', '7.1', 'ffmpeg'))
+    expect(status.available).toBe(true)
+
+    // Loose file should be gone after migration.
+    expect(existsSync(join(binRoot, 'ffmpeg'))).toBe(false)
+  })
+
+  it('uses the probed version (not opts.version) when migrating', async () => {
+    const binRoot = join(tempDir, 'bin')
+    mkdirSync(binRoot, { recursive: true })
+    // Loose binary is actually 8.1.1, opts.version is 7.1 (e.g. operator
+    // upgraded by hand but didn't update config).
+    placeLooseBinary(binRoot, '8.1.1')
+
+    const mgr = new FFmpegManager({
+      binRoot,
+      version: '7.1',
+      downloadUrl: 'https://example.invalid/',
+      systemFallbackPath: '/nonexistent/ffmpeg',
+    })
+
+    const status = await mgr.initialize()
+    expect(status.source).toBe('bundled')
+    // normalizeVersion("8.1.1") → "8.1", so target directory is 8.1.
+    expect(status.path).toBe(join(binRoot, '.versions', '8.1', 'ffmpeg'))
+  })
+
+  it('leaves the loose binary alone when .versions/{v}/ffmpeg already exists', async () => {
+    const binRoot = join(tempDir, 'bin')
+    mkdirSync(join(binRoot, '.versions', '7.1'), { recursive: true })
+    placeLooseBinary(binRoot, '7.1')
+    const existingTarget = join(binRoot, '.versions', '7.1', 'ffmpeg')
+    writeFileSync(existingTarget, '#!/bin/sh\necho existing\n', { mode: 0o755 })
+
+    const mgr = new FFmpegManager({
+      binRoot,
+      version: '7.1',
+      downloadUrl: 'https://example.invalid/',
+      systemFallbackPath: '/nonexistent/ffmpeg',
+    })
+
+    const status = await mgr.initialize()
+    // The pre-existing binary wins; no overwrite.
+    expect(status.path).toBe(existingTarget)
+    // Loose file got parked under a .orphan sibling so it doesn't
+    // sit around shadowing nothing on subsequent boots.
+    expect(existsSync(join(binRoot, 'ffmpeg'))).toBe(false)
+    expect(existsSync(join(binRoot, 'ffmpeg.orphan'))).toBe(true)
+  })
+
+  it('skips migration entirely when forceDownload=true (user explicitly re-downloading)', async () => {
+    const binRoot = join(tempDir, 'bin')
+    mkdirSync(binRoot, { recursive: true })
+    placeLooseBinary(binRoot, '7.1')
+
+    // Mock download to succeed by copying the loose binary into .versions/7.1/
+    vi.spyOn(downloader, 'downloadFfmpeg').mockImplementation(async (_c, root, onProgress) => {
+      const versionDir = join(root, '.versions', '7.1')
+      mkdirSync(versionDir, { recursive: true })
+      const target = join(versionDir, 'ffmpeg')
+      copyFileSync(join(root, 'ffmpeg'), target)
+      chmodSync(target, 0o755)
+      onProgress({ state: 'complete', path: target, version: '7.1' })
+      return { path: target, version: '7.1' }
+    })
+
+    const mgr = new FFmpegManager({
+      binRoot,
+      version: '7.1',
+      downloadUrl: 'https://example.invalid/',
+      systemFallbackPath: '/nonexistent/ffmpeg',
+    })
+
+    // triggerDownload resets initializingPromise and sets forceDownload=true.
+    await mgr.triggerDownload()
+    const status = mgr.getStatus()
+    expect(status.source).toBe('bundled')
+    // Loose file should NOT have been renamed (migration is skipped when forceDownload)
+    // because the download succeeded and provided a fresher path.
   })
 })

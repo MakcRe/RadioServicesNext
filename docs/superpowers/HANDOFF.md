@@ -5,24 +5,27 @@
 
 ## 当前状态
 
-**v1 全部完成** ✅
+**v1 + v1.1 收尾 + B7 扩展全部完成** ✅
 
-设计规格：`docs/superpowers/specs/2026-06-29-radio-services-design.md`（830 行）
-实施计划：`docs/superpowers/plans/2026-06-29-radio-services.md`（4826 行）
+设计规格（v1）：`docs/superpowers/specs/2026-06-29-radio-services-design.md`（830 行）
+实施计划（v1）：`docs/superpowers/plans/2026-06-29-radio-services.md`（4826 行）
+设计规格（B7）：`docs/superpowers/specs/2026-06-30-stream-wait-on-source.md`（673 行）
 
-### 已完成 commits（29 个）
+### 已完成 commits（v1.1.x 共 6 个：B7 落地）
 
-v1.1 收尾（10 个）：
 ```
-18df09c refactor(web): replace any with typed API responses + tighten route id parsing  ← HEAD
-c8082c3 feat(listener): add public landing page and deduplicate escapeHtml
-bf1b6d3 docs: update HANDOFF for v1.1 bug-fix session
-7490c8b docs: add listener landing page design spec (HANDOFF B6)
-8eece9c feat(web): split view modules and align with paginated API responses
-d841f4f fix(dashboard): read isLive from broadcaster.isLive, not source.connected
-0f8822b fix(source): pipe ffmpeg stdout to broadcaster instead of HTTP loopback
-3bd171c test: fix wrong import type path
-33d1d5e fix(config): warn on startup if sourcePassword is the default 'hackme'
+857efcf docs(spec): add design for B7 listener resilience on source switch
+54c27c9 test(e2e): cover source-switch listener resilience (HANDOFF B7)
+53656a7 feat(landing): poll /api/status and auto-reconnect after stream drops
+d4dd0e1 feat(config): expose stream.pollIntervalMs for the landing page
+8fe6d61 fix(app): source-start auto-stops prior ffmpeg; source-stop calls endAll
+49b1275 refactor(broadcaster): split detachSource and add endAll for source-switch resilience  ← B7 起点
+```
+
+### 已完成 commits（v1.1 收尾 10 个）
+```
+756f95f docs: mark C9 and C10 as done in HANDOFF
+18df09c refactor(web): replace any with typed API responses + tighten route id parsing
 ```
 
 v1 主体（19 个）：
@@ -56,7 +59,7 @@ d80a8dc feat: config loading + pino logger
 bdf1556 docs: design spec + implementation plan
 ```
 
-**测试**：83 passed (14 test files) · `pnpm typecheck` exit 0
+**测试**：91 passed (14 test files) · `pnpm typecheck` exit 0
 
 **Tasks 0-16 全部完成 + 完整走完两阶段审查**
 
@@ -79,7 +82,20 @@ bdf1556 docs: design spec + implementation plan
    - 修复：dashboard 改读 `broadcaster.isLive` / `listeners.count`，并把视图按模块拆分（`d841f4f` + `8eece9c`）
 6. ✅ **`public/index.html` 听众落地页缺失** — README 提到但未实现
    - 修复：`public/index.html` 含深色主题 HTML5 `<audio>` 播放器，`preload="none"`，graceful 降级（`c8082c3`）
-7. ❌ **`/stream` 无源时立即 503** — 应该等待 source 启动而非拒绝（取决于产品决策）
+7. ✅ **`/stream` 无源时立即 503** — 设计选择（保留） + 落地页轮询重试
+
+### D. v1.1.x 收尾（HANDOFF 完成 + 用户提的"切歌必须刷新"问题）
+
+11. ✅ **听众长连接跨切歌不中断** — 用户会话内提出的体验问题（B7 扩展）
+   - 修复：`Broadcaster.detachSource` 拆为 `unbindSource`（不踢 listener）+ `endAll`（仅 /api/source/stop 用）；`broadcaster.pipeFrom()` ring buffer 在末尾 reset（clear-on-switch）
+   - 修复：`/api/source/start` 启动新 ffmpeg 前先 stop 旧（避免双流叠加）
+   - 修复：`/api/source/stop` 调 `broadcaster.endAll()`
+   - 修复：archiver 跨 session 持久运行（不再每次重启）
+   - 修复：落地页 `public/index.html` 加轮询 /api/status + audio error 自动重试，状态文字（等待/收听/重试/结束）
+   - 配置：`stream.pollIntervalMs`（默认 5000）+ `stream.pollIntervalMaxMs`（默认 30000）
+   - 测试：broadcaster 5 个新单测 + config 1 个 + e2e 2 个"切歌韧性"用例
+   - 改动 5 个文件：broadcaster.ts / app.ts / config.ts / routes/config.ts / web/types.ts / index.html
+   - 设计稿：`docs/superpowers/specs/2026-06-30-stream-wait-on-source.md`（673 行）
 
 ### C. 代码组织
 

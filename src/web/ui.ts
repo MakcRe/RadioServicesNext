@@ -4,6 +4,19 @@ export function escapeHtml(str: string): string {
   return div.innerHTML
 }
 
+/**
+ * Parse a positive integer route param into a finite number.
+ * Returns null if the input is non-numeric, fractional, negative, or zero.
+ * Used by event handlers that read `data-id` attributes off buttons, where
+ * the strict number-typed route expects a plain positive `number`.
+ */
+export function parseId(raw: string | null | undefined): number | null {
+  if (raw === null || raw === undefined || raw === '') return null
+  const n = Number(raw)
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) return null
+  return n
+}
+
 export function $(selector: string, parent: Element | Document = document): Element | null {
   return parent.querySelector(selector);
 }

@@ -1,5 +1,6 @@
 import { api } from '../api-client.js'
 import { $, formatTimeAgo, formatDuration, escapeHtml } from '../ui.js'
+import type { ListenerLogRow } from '../types.js'
 
 export async function renderListeners(container: Element): Promise<void> {
   container.innerHTML = `
@@ -64,7 +65,7 @@ async function loadCurrentListeners(): Promise<void> {
         <tbody>
           ${listeners
             .map(
-              (l: any) => `
+              (l: ListenerLogRow) => `
             <tr>
               <td class="text-mono">${escapeHtml(l.ip || '未知')}</td>
               <td>${l.connected_at ? formatTimeAgo(l.connected_at) : '--'}</td>
@@ -116,7 +117,7 @@ async function loadHistory(page: number): Promise<void> {
         <tbody>
           ${history
             .map(
-              (l: any) => `
+              (l: ListenerLogRow) => `
             <tr>
               <td class="text-mono">${escapeHtml(l.ip || '未知')}</td>
               <td>${l.connected_at ? new Date(l.connected_at).toLocaleString('zh-CN') : '--'}</td>

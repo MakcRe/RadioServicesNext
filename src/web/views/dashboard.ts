@@ -1,18 +1,7 @@
 import { $, $$, showToast } from '../ui.js'
 import { api } from '../api-client.js'
 import { wsClient } from '../ws-client.js'
-
-interface StatusResponse {
-  broadcaster?: { isLive: boolean }
-  listeners?: { count: number }
-  ffmpeg?: { available: boolean; source: string; version: string; path: string }
-}
-
-interface FfmpegStatusResponse {
-  source: string
-  version: string
-  path: string
-}
+import type { FFmpegStatusSummary, StatusResponse } from '../types.js'
 
 export function initDashboard(): void {
   const container = $('#dashboard-view')
@@ -121,11 +110,11 @@ function renderStatus(status: StatusResponse): void {
   }
 }
 
-function renderFfmpegStatus(status: FfmpegStatusResponse | null): void {
+function renderFfmpegStatus(status: FFmpegStatusSummary | null): void {
   const container = $('#ffmpeg-status')
   if (!container) return
 
-  if (!status) {
+  if (!status || !status.available) {
     container.innerHTML = '<p class="text-muted">FFmpeg 未安装或无法获取状态</p>'
     return
   }
@@ -134,15 +123,15 @@ function renderFfmpegStatus(status: FfmpegStatusResponse | null): void {
     <table>
       <tr>
         <td class="text-muted">数据源</td>
-        <td class="text-mono">${status.source || '未知'}</td>
+        <td class="text-mono">${status.source}</td>
       </tr>
       <tr>
         <td class="text-muted">版本</td>
-        <td class="text-mono">${status.version}</td>
+        <td class="text-mono">${status.version ?? '未知'}</td>
       </tr>
       <tr>
         <td class="text-muted">路径</td>
-        <td class="text-mono">${status.path}</td>
+        <td class="text-mono">${status.path ?? '未知'}</td>
       </tr>
     </table>
   `

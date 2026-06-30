@@ -1,5 +1,6 @@
 import { api } from '../api-client.js'
-import { $, $$, formatBytes, formatDuration, showToast, escapeHtml } from '../ui.js'
+import { $, $$, formatBytes, formatDuration, showToast, escapeHtml, parseId } from '../ui.js'
+import type { PlaylistItem, UploadedFile } from '../types.js'
 
 export async function renderSource(container: Element): Promise<void> {
   container.innerHTML = `
@@ -120,7 +121,7 @@ async function loadFiles(): Promise<void> {
         <tbody>
           ${files
             .map(
-              (f: any) => `
+              (f: UploadedFile) => `
             <tr data-id="${f.id}">
               <td>${escapeHtml(f.original_name || f.filename)}</td>
               <td>${formatBytes(f.size_bytes)}</td>
@@ -141,7 +142,11 @@ async function loadFiles(): Promise<void> {
     // Event listeners
     $$('.play-btn').forEach((btn) => {
       btn.addEventListener('click', async () => {
-        const id = Number(btn.getAttribute('data-id'))
+        const id = parseId(btn.getAttribute('data-id'))
+        if (id === null) {
+          showToast('无效的文件 ID', 'error')
+          return
+        }
         const name = btn.closest('tr')?.querySelector('td')?.textContent || '未知'
         try {
           await api.sourceStart('file', id)
@@ -169,7 +174,11 @@ async function loadFiles(): Promise<void> {
 
     $$('.delete-btn').forEach((btn) => {
       btn.addEventListener('click', async () => {
-        const id = Number(btn.getAttribute('data-id'))
+        const id = parseId(btn.getAttribute('data-id'))
+        if (id === null) {
+          showToast('无效的文件 ID', 'error')
+          return
+        }
         if (!confirm('确定要删除这个文件吗？')) return
         try {
           await api.deleteFile(id)
@@ -211,7 +220,7 @@ async function loadPlaylist(): Promise<void> {
         <tbody>
           ${items
             .map(
-              (item: any, index: number) => `
+              (item: PlaylistItem, index: number) => `
             <tr data-id="${item.id}">
               <td>${index + 1}</td>
               <td>${escapeHtml(item.display_name || item.filename)}</td>
@@ -230,7 +239,11 @@ async function loadPlaylist(): Promise<void> {
 
     $$('.play-btn').forEach((btn) => {
       btn.addEventListener('click', async () => {
-        const id = Number(btn.getAttribute('data-id'))
+        const id = parseId(btn.getAttribute('data-id'))
+        if (id === null) {
+          showToast('无效的歌曲 ID', 'error')
+          return
+        }
         const type = btn.getAttribute('data-type') as 'file' | 'playlist'
         const name = btn.closest('tr')?.querySelectorAll('td')[1]?.textContent || '未知'
         try {
@@ -244,7 +257,11 @@ async function loadPlaylist(): Promise<void> {
 
     $$('.delete-btn').forEach((btn) => {
       btn.addEventListener('click', async () => {
-        const id = Number(btn.getAttribute('data-id'))
+        const id = parseId(btn.getAttribute('data-id'))
+        if (id === null) {
+          showToast('无效的歌曲 ID', 'error')
+          return
+        }
         if (!confirm('确定要从歌单移除吗？')) return
         try {
           await api.deleteFromPlaylist(id)

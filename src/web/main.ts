@@ -1,6 +1,7 @@
 import { $, $$ } from './ui.js'
 import { wsClient } from './ws-client.js'
 import { api } from './api-client.js'
+import type { StatusResponse } from './types.js'
 import { initDashboard } from './views/dashboard.js'
 import { renderSource } from './views/source.js'
 import { renderListeners } from './views/listeners.js'
@@ -95,10 +96,11 @@ function main(): void {
   }, 5000)
 }
 
-function updateStatusIndicator(status: any): void {
+function updateStatusIndicator(status: StatusResponse): void {
   const badge = $('#disconnect-warning') as HTMLElement | null
   if (badge) {
-    if (!status.source?.connected && status.stream?.live) {
+    const isLive = Boolean(status.broadcaster?.isLive)
+    if (!isLive) {
       badge.style.display = 'inline-block'
     } else {
       badge.style.display = 'none'

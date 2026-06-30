@@ -1,19 +1,6 @@
 import { api, startFfmpegDownloadStream } from '../api-client.js'
-import { $, escapeHtml } from '../ui.js'
-
-interface FfmpegStatus {
-  available: boolean
-  version: string
-  source: string
-  path: string
-}
-
-interface DownloadState {
-  status: 'idle' | 'downloading' | 'installing' | 'done' | 'error'
-  progress?: number
-  message?: string
-  error?: string
-}
+import { $, escapeHtml, formatBytes } from '../ui.js'
+import type { FFmpegStatusSummary, FfmpegDownloadEvent } from '../types.js'
 
 export async function renderFfmpegPanel(container: Element): Promise<void> {
   container.innerHTML = `
@@ -40,7 +27,7 @@ async function loadFfmpegStatus(): Promise<void> {
   const downloadContainer = $('#ffmpeg-download-content')
 
   try {
-    const status: FfmpegStatus = await api.ffmpegStatus()
+    const status: FFmpegStatusSummary = await api.ffmpegStatus()
 
     if (statusContainer) {
       statusContainer.innerHTML = `
@@ -58,11 +45,11 @@ async function loadFfmpegStatus(): Promise<void> {
           </tr>
           <tr>
             <td class="text-muted">版本</td>
-            <td class="text-mono">${escapeHtml(status.version || '--')}</td>
+            <td class="text-mono">${escapeHtml(status.version ?? '--')}</td>
           </tr>
           <tr>
             <td class="text-muted">路径</td>
-            <td class="text-mono">${escapeHtml(status.path || '--')}</td>
+            <td class="text-mono">${escapeHtml(status.path ?? '--')}</td>
           </tr>
         </table>
       `
@@ -115,33 +102,37 @@ async function handleDownload(): Promise<void> {
   }
 
   // Listen for progress updates
-  const closeSSE = startFfmpegDownloadStream((state: DownloadState) => {
+  const closeSSE = startFfmpegDownloadStream((state: FfmpegDownloadEvent) => {
     if (!progressContainer) return
 
-    switch (state.status) {
+    switch (state.state) {
       case 'downloading':
         progressContainer.innerHTML = `
           <div class="progress-bar">
-            <div class="progress-fill" style="width: ${state.progress || 0}%"></div>
+            <div class="progress-fill" style="width: ${state.percent || 0}%"></div>
           </div>
-          <p class="text-muted">${escapeHtml(state.message || '下载中...')} ${state.progress || 0}%</p>
+          <p class="text-muted">下载中 ${(state.percent ?? 0).toFixed(1)}% · ${formatBytes(state.speed)}/s</p>
         `
         break
-      case 'installing':
+      case 'verifying':
+      case 'extracting':
         progressContainer.innerHTML = `
-          <p class="text-muted">${escapeHtml(state.message || '安装中...')}</p>
+          <p class="text-muted">${escapeHtml(state.message)}</p>
         `
         break
-      case 'done':
+      case 'complete':
         progressContainer.innerHTML = '<p class="text-success">✓ FFmpeg 安装成功！</p>'
         setTimeout(() => loadFfmpegStatus(), 1500)
         break
       case 'error':
-        progressContainer.innerHTML = `<p class="text-error">✗ 安装失败: ${escapeHtml(state.error || '未知错误')}</p>`
+        progressContainer.innerHTML = `<p class="text-error">✗ 安装失败: ${escapeHtml(state.message)}</p>`
         if (downloadBtn) {
           downloadBtn.disabled = false
           downloadBtn.textContent = '重试'
         }
+        break
+      case 'idle':
+        progressContainer.innerHTML = '<p class="text-muted">空闲</p>'
         break
     }
   })

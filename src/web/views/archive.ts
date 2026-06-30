@@ -1,5 +1,6 @@
 import { api } from '../api-client.js'
 import { $, formatBytes, escapeHtml } from '../ui.js'
+import type { ArchiveFile } from '../types.js'
 
 export async function renderArchive(container: Element): Promise<void> {
   container.innerHTML = `
@@ -27,7 +28,7 @@ async function loadArchive(): Promise<void> {
     }
 
     // Group by date
-    const grouped: Record<string, typeof archives> = {}
+    const grouped: Record<string, ArchiveFile[]> = {}
     for (const item of archives) {
       const date = new Date(item.mtime).toLocaleDateString('zh-CN', {
         year: 'numeric',
@@ -48,7 +49,7 @@ async function loadArchive(): Promise<void> {
           <div class="archive-list">
             ${items
               .map(
-                (item: any) => `
+                (item: ArchiveFile) => `
               <div class="archive-item" data-name="${escapeHtml(item.filename)}">
                 <div class="archive-info">
                   <span class="archive-name">${escapeHtml(item.filename)}</span>

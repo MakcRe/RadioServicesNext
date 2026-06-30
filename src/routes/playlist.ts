@@ -5,6 +5,18 @@ import type { UploadedFilesRepo } from '../db/repos/uploaded-files.repo.js'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyFastifyInstance = FastifyInstance<any, any, any, any, any>
 
+/**
+ * Parse a route param string into a finite positive integer, throwing a
+ * 400-friendly Error if it is malformed. Replaces bare `Number(id)` which
+ * silently produces NaN for inputs like 'abc' or ''.
+ */
+function parsePositiveId(id: string): number {
+  if (!/^[1-9][0-9]*$/.test(id)) {
+    throw new Error(`invalid id: ${id}`)
+  }
+  return Number(id)
+}
+
 export function registerPlaylistRoutes(app: AnyFastifyInstance, deps: {
   playlistService: PlaylistService
   fileRepo: UploadedFilesRepo
@@ -28,16 +40,17 @@ export function registerPlaylistRoutes(app: AnyFastifyInstance, deps: {
 
   app.put('/api/playlist/:id', async (request) => {
     const { id } = request.params as { id: string }
+    const numId = parsePositiveId(id)
     const body = request.body as { displayName?: string }
     if (body.displayName) {
-      deps.playlistService.updateDisplay(Number(id), body.displayName)
+      deps.playlistService.updateDisplay(numId, body.displayName)
     }
     return { ok: true }
   })
 
   app.delete('/api/playlist/:id', async (request) => {
     const { id } = request.params as { id: string }
-    deps.playlistService.remove(Number(id))
+    deps.playlistService.remove(parsePositiveId(id))
     return { ok: true }
   })
 
@@ -55,7 +68,7 @@ export function registerPlaylistRoutes(app: AnyFastifyInstance, deps: {
 
   app.delete('/api/source/files/:id', async (request, reply) => {
     const { id } = request.params as { id: string }
-    const numId = Number(id)
+    const numId = parsePositiveId(id)
     const file = deps.fileRepo.getById(numId)
     if (!file) {
       reply.status(404)

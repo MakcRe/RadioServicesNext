@@ -135,19 +135,24 @@ export async function buildApp(
 
   app.post('/api/source/start', async (request) => {
     const body = request.body as { type: 'file' | 'playlist'; id: number | string }
-    if (!body.type || body.id === undefined) {
+    if (!body.type || body.id === undefined || body.id === null) {
       throw new Error('type and id required')
     }
+    const rawId = String(body.id)
+    if (!/^[1-9][0-9]*$/.test(rawId)) {
+      throw new Error(`invalid id: ${rawId}`)
+    }
+    const numId = Number(rawId)
     let inputPath: string | null = null
     let displayName: string | null = null
 
     if (body.type === 'file') {
-      const file = uploadedFilesRepo.getById(Number(body.id))
+      const file = uploadedFilesRepo.getById(numId)
       if (!file) throw new Error('file not found')
       inputPath = join(config.playlist.uploadDir, file.filename)
       displayName = file.original_name
     } else if (body.type === 'playlist') {
-      const song = playlistService.list().find((s) => s.id === Number(body.id))
+      const song = playlistService.list().find((s) => s.id === numId)
       if (!song) throw new Error('song not found')
       const file = uploadedFilesRepo.list().find((f) => f.filename === song.filename)
       if (!file) throw new Error('uploaded file not found')

@@ -1,85 +1,144 @@
+import type {
+  ArchiveFile,
+  ConfigResponse,
+  FFmpegStatusSummary,
+  FfmpegDownloadEvent,
+  ListenerCurrentResponse,
+  ListenerHistoryResponse,
+  OkResponse,
+  PlaylistItem,
+  StatusResponse,
+  UploadedFile,
+  UploadResponse,
+} from './types.js'
+
 const BASE = ''
 
-function json(res: Response) {
+function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
-    throw new Error(`HTTP ${res.status}: ${res.statusText}`)
+    return Promise.reject(new Error(`HTTP ${res.status}: ${res.statusText}`))
   }
-  return res.json()
+  return res.json() as Promise<T>
+}
+
+async function fetchJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
+  const res = await fetch(input, init)
+  return json<T>(res)
+}
+
+interface UploadedFilesResponse {
+  files: UploadedFile[]
+}
+
+interface PlaylistResponse {
+  items: PlaylistItem[]
+}
+
+interface ArchiveListResponse {
+  files: ArchiveFile[]
+}
+
+interface SourceStartResponse {
+  ok: true
 }
 
 export const api = {
-  status: () => fetch(`${BASE}/api/status`).then(json),
+  status: () => fetchJson<StatusResponse>(`${BASE}/api/status`),
 
-  ffmpegStatus: () => fetch(`${BASE}/api/ffmpeg/status`).then(json),
+  ffmpegStatus: () =>
+    fetchJson<FFmpegStatusSummary>(`${BASE}/api/ffmpeg/status`),
 
   triggerFfmpegDownload: () =>
-    fetch(`${BASE}/api/ffmpeg/download`, { method: 'POST' }).then(json),
+    fetchJson<OkResponse>(`${BASE}/api/ffmpeg/download`, { method: 'POST' }),
 
   sourceStart: (type: 'file' | 'playlist', id: number) =>
-    fetch(`${BASE}/api/source/start`, {
+    fetchJson<SourceStartResponse>(`${BASE}/api/source/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ type, id }),
-    }).then(json),
+    }),
 
-  sourceStop: () => fetch(`${BASE}/api/source/stop`, { method: 'POST' }).then(json),
+  sourceStop: () =>
+    fetchJson<OkResponse>(`${BASE}/api/source/stop`, { method: 'POST' }),
 
-  upload: async (file: File): Promise<any> => {
+  upload: async (file: File): Promise<UploadResponse> => {
     const formData = new FormData()
     formData.append('file', file)
     const res = await fetch(`${BASE}/api/source/upload`, {
       method: 'POST',
       body: formData,
     })
-    return json(res)
+    return json<UploadResponse>(res)
   },
 
-  listFiles: () => fetch(`${BASE}/api/source/files`).then(json),
+  listFiles: () =>
+    fetchJson<UploadedFilesResponse>(`${BASE}/api/source/files`),
 
   deleteFile: (id: number) =>
-    fetch(`${BASE}/api/source/files/${id}`, { method: 'DELETE' }).then(json),
+    fetchJson<OkResponse>(
+      `${BASE}/api/source/files/${id}`,
+      { method: 'DELETE' },
+    ),
 
-  listPlaylist: () => fetch(`${BASE}/api/playlist`).then(json),
+  listPlaylist: () =>
+    fetchJson<PlaylistResponse>(`${BASE}/api/playlist`),
 
-  addToPlaylist: (filename: string, displayName: string, durationSec?: number) =>
-    fetch(`${BASE}/api/playlist`, {
+  addToPlaylist: (
+    filename: string,
+    displayName: string,
+    durationSec?: number | null,
+  ) =>
+    fetchJson<{ id: number }>(`${BASE}/api/playlist`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ filename, displayName, durationSec }),
-    }).then(json),
+    }),
 
   deleteFromPlaylist: (id: number) =>
-    fetch(`${BASE}/api/playlist/${id}`, { method: 'DELETE' }).then(json),
+    fetchJson<OkResponse>(
+      `${BASE}/api/playlist/${id}`,
+      { method: 'DELETE' },
+    ),
 
   reorderPlaylist: (ids: number[]) =>
-    fetch(`${BASE}/api/playlist/reorder`, {
+    fetchJson<OkResponse>(`${BASE}/api/playlist/reorder`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ids }),
-    }).then(json),
+    }),
 
-  listArchive: () => fetch(`${BASE}/api/archive/list`).then(json),
+  listArchive: () =>
+    fetchJson<ArchiveListResponse>(`${BASE}/api/archive/list`),
 
-  currentListeners: () => fetch(`${BASE}/api/listeners/current`).then(json),
+  currentListeners: () =>
+    fetchJson<ListenerCurrentResponse>(`${BASE}/api/listeners/current`),
 
   historyListeners: (page = 1) =>
-    fetch(`${BASE}/api/listeners/history?page=${page}`).then(json),
+    fetchJson<ListenerHistoryResponse>(
+      `${BASE}/api/listeners/history?page=${page}`,
+    ),
 
-  config: () => fetch(`${BASE}/api/config`).then(json),
+  config: () => fetchJson<ConfigResponse>(`${BASE}/api/config`),
 
-  updateConfig: (key: string, value: any) =>
-    fetch(`${BASE}/api/config`, {
+  updateConfig: (
+    key: string,
+    // Config value can be primitive or array (allowedExtensions)
+    value: string | number | boolean | string[] | null,
+  ) =>
+    fetchJson<OkResponse>(`${BASE}/api/config`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ key, value }),
-    }).then(json),
+    }),
 }
 
-export function startFfmpegDownloadStream(onState: (s: any) => void): () => void {
+export function startFfmpegDownloadStream(
+  onState: (s: FfmpegDownloadEvent) => void,
+): () => void {
   const es = new EventSource(`${BASE}/api/ffmpeg/download/status`)
   es.onmessage = (e) => {
     try {
-      onState(JSON.parse(e.data))
+      onState(JSON.parse(e.data) as FfmpegDownloadEvent)
     } catch {}
   }
   return () => es.close()

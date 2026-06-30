@@ -2,11 +2,13 @@ import type {
   ArchiveFile,
   ConfigResponse,
   FFmpegStatusSummary,
+  FFmpegVersionsResponse,
   FfmpegDownloadEvent,
   ListenerCurrentResponse,
   ListenerHistoryResponse,
   OkResponse,
   PlaylistItem,
+  SelectVersionResponse,
   StatusResponse,
   UploadedFile,
   UploadResponse,
@@ -129,6 +131,16 @@ export const api = {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ key, value }),
+    }),
+
+  listFfmpegVersions: () =>
+    fetchJson<FFmpegVersionsResponse>(`${BASE}/api/ffmpeg/versions`),
+
+  selectFfmpegVersion: (version: string) =>
+    fetchJson<SelectVersionResponse>(`${BASE}/api/ffmpeg/select`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ version }),
     }),
 }
 

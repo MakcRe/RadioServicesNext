@@ -120,3 +120,16 @@ export interface ConfigResponse {
 
 // SSE event types from /api/ffmpeg/download/status
 export type FfmpegDownloadEvent = DownloadState
+
+// GET /api/ffmpeg/versions
+export interface FFmpegVersionsResponse {
+  versions: string[]
+  current: string | null
+  recommended: string | null
+}
+
+// POST /api/ffmpeg/select
+export interface SelectVersionResponse {
+  success: boolean
+  message: string
+}

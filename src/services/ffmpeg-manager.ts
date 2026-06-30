@@ -139,6 +139,7 @@ export class FFmpegManager extends EventEmitter {
       const sorted = await this.listVersions()
       for (const v of sorted) {
         const p = join(this.opts.binRoot, '.versions', v, this.binaryName())
+        if (!(await this.canExecute(p))) continue
         this.status = {
           available: true,
           source: 'bundled',

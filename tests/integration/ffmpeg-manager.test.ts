@@ -461,6 +461,7 @@ describe('FFmpegManager bundled version priority (per spec 2026-06-30)', () => {
       systemFallbackPath: '/nonexistent/ffmpeg',
     })
     const status = await mgr.initialize()
+    expect(status.source).toBe('bundled')
     expect(status.path).toBe(join(binRoot, '.versions', '7.1', 'ffmpeg'))
   })
 })

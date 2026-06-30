@@ -49,7 +49,8 @@ export class Broadcaster {
   }
 
   pipeFrom(stream: Readable, session?: SourceSession): void {
-    this.detachSource()
+    this.unbindSource()
+
     this.sourceStream = stream
     if (session) this.currentSession = session
 
@@ -62,12 +63,15 @@ export class Broadcaster {
 
     stream.on('data', processChunk)
 
-    this.onSourceEndHandler = () => this.detachSource()
+    this.onSourceEndHandler = () => this.unbindSource()
     stream.on('end', this.onSourceEndHandler)
     stream.on('error', this.onSourceEndHandler)
+
+    this.ringBuffer.reset()
   }
 
-  private detachSource(): void {
+  /** Detach from current source WITHOUT closing listeners. Use on auto song-switch. */
+  private unbindSource(): void {
     if (this.sourceStream && this.onSourceEndHandler) {
       this.sourceStream.off('end', this.onSourceEndHandler)
       this.sourceStream.off('error', this.onSourceEndHandler)
@@ -75,7 +79,12 @@ export class Broadcaster {
     this.sourceStream = null
     this.currentSession = null
     this.onSourceEndHandler = null
+    // listeners deliberately NOT closed — they survive across source switches
+  }
 
+  /** Close every listener and reset state. Use on explicit /api/source/stop. */
+  endAll(): void {
+    this.unbindSource()
     for (const listener of this.listeners.values()) {
       listener.end()
     }

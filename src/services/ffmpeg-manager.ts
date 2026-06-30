@@ -2,8 +2,13 @@ import { spawn } from 'child_process'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { EventEmitter } from 'events'
-import { downloadFfmpeg, type DownloadState } from './ffmpeg-downloader.js'
+import {
+  downloadFfmpeg,
+  resolveLatestFfmpegVersion,
+  type DownloadState,
+} from './ffmpeg-downloader.js'
 import type { AppConfig } from '../config.js'
+import type pino from 'pino'
 
 export type FFmpegSource = 'bundled' | 'system' | 'override' | 'missing'
 
@@ -22,18 +27,20 @@ export interface FFmpegManagerOptions {
   ffmpegPathOverride?: string
   /** System fallback path; if not given, tries `which ffmpeg`. */
   systemFallbackPath?: string
+  /** Logger for warnings (e.g. version resolution failure). */
+  logger?: pino.Logger
 }
 
 /**
- * FFmpegManager 初始化顺序（测试驱动）：
- * 1. override (调试路径)
- * 2. bundled (.versions/{version}/ffmpeg 已缓存)
- * 3. system fallback (避免不必要的网络)
- * 4. download (从 BtbN 下载)
- * 5. missing
+ * FFmpegManager 初始化顺序（按 spec `2026-06-29-radio-services-design.md` 第 156 行）：
+ * 1. override (调试显式指定路径 — 一切其它逻辑短路)
+ * 2. bundled (`.versions/{version}/ffmpeg` 已存在且可执行 → 复用项目内二进制)
+ * 3. download (bundled 缺失 → 主动从 BtbN 下载；失败才进入下一步)
+ * 4. system fallback (仅当下载失败时回退；正常情况下不会触碰 PATH 上的 ffmpeg)
+ * 5. missing (都没有 → 启动失败)
  *
- * 步骤 3 system 在 download 之前是为了避免网络失败回退延迟（spec 计划中计划是 bundled → download → system，
- * 但被调整为 system 在 download 之前以减少不必要的网络请求，特别在 system ffmpeg 可用时）
+ * 第 3 步的下载优先于第 4 步系统兜底：spec 明确"优先使用项目内下载的版本；
+ * 下载失败时回退到系统 ffmpeg；都没有则启动失败"。
  */
 export class FFmpegManager extends EventEmitter {
   private status: FFmpegStatus = {
@@ -53,12 +60,13 @@ export class FFmpegManager extends EventEmitter {
   async initialize(): Promise<FFmpegStatus> {
     // 防止重入: 多个并发 initialize() 调用应该共享同一个 promise
     if (this.initializingPromise) return this.initializingPromise
+
     this.initializingPromise = this.doInitialize()
     return this.initializingPromise
   }
 
   private async doInitialize(): Promise<FFmpegStatus> {
-    // 1. Override
+    // 1. Override (调试显式指定路径)
     if (this.opts.ffmpegPathOverride) {
       if (await this.canExecute(this.opts.ffmpegPathOverride)) {
         this.status = {
@@ -71,7 +79,7 @@ export class FFmpegManager extends EventEmitter {
       }
     }
 
-    // 2. Bundled (skip if forceDownload is set to force re-download)
+    // 2. Bundled (项目内已下载的二进制)
     if (!this.forceDownload) {
       const bundled = join(this.opts.binRoot, '.versions', this.opts.version, this.binaryName())
       if (existsSync(bundled)) {
@@ -87,37 +95,14 @@ export class FFmpegManager extends EventEmitter {
       }
     }
 
-    // 3. System fallback (avoid network when system ffmpeg is available)
-    // When systemFallbackPath is explicitly set, try ONLY that path (do NOT also
-    // call which('ffmpeg') — otherwise the test that sets a nonexistent explicit
-    // path would silently fall back to the real system binary and report "available").
-    const sysCandidates: string[] = []
-    if (this.opts.systemFallbackPath) {
-      sysCandidates.push(this.opts.systemFallbackPath)
-    } else {
-      const discovered = await this.which('ffmpeg')
-      if (discovered) sysCandidates.push(discovered)
-    }
-    for (const p of sysCandidates) {
-      if (await this.canExecute(p)) {
-        this.status = {
-          available: true,
-          source: 'system',
-          path: p,
-          version: await this.getVersion(p),
-        }
-        return this.status
-      }
-    }
-
-    // 4. Download
+    // 3. Download (BtbN/FFmpeg-Builds → bin/ffmpeg/.versions/{version}/)
     try {
       this.downloading = true
       const config: AppConfig = {
         db: { path: '' },
         server: { host: '0.0.0.0', port: 8000 },
         auth: { sourcePassword: '' },
-        ffmpeg: { version: '', sourceUrl: '' },
+        ffmpeg: { version: this.opts.version, sourceUrl: this.opts.downloadUrl },
         archive: { directory: '', segmentDurationSec: 0, retentionDays: 0, minFreeSpaceMB: 0 },
         playlist: { uploadDir: '', maxFileSizeMB: 0, allowedExtensions: [] },
         logging: { directory: '', level: '', retentionDays: 0 },
@@ -139,9 +124,33 @@ export class FFmpegManager extends EventEmitter {
       return this.status
     } catch {
       this.downloading = false
-      // 5. Fall through to missing
+      this.forceDownload = false
+      // 走下一步：system 兜底
     }
 
+    // 4. System fallback (仅当下载失败时回退)
+    // 当 systemFallbackPath 显式给出时，只尝试该路径 — 不另外 `which ffmpeg` —
+    // 否则测试若把不存在的显式路径传入，会被环境里的真实系统二进制默默替代并误报 "available"。
+    const sysCandidates: string[] = []
+    if (this.opts.systemFallbackPath) {
+      sysCandidates.push(this.opts.systemFallbackPath)
+    } else {
+      const discovered = await this.which('ffmpeg')
+      if (discovered) sysCandidates.push(discovered)
+    }
+    for (const p of sysCandidates) {
+      if (await this.canExecute(p)) {
+        this.status = {
+          available: true,
+          source: 'system',
+          path: p,
+          version: await this.getVersion(p),
+        }
+        return this.status
+      }
+    }
+
+    // 5. Missing — 启动失败
     this.status = { available: false, source: 'missing', path: null, version: null }
     return this.status
   }
@@ -160,6 +169,12 @@ export class FFmpegManager extends EventEmitter {
 
   async triggerDownload(): Promise<void> {
     if (this.downloading) return
+    // Force a fresh initialize(): the cached initializingPromise would otherwise
+    // short-circuit before the bundled-skip check fires (see doInitialize step 2),
+    // so a re-trigger after a previous boot would silently re-resolve the cached
+    // status without ever calling downloadFfmpeg — and the SSE event stream would
+    // only ever see the initial { state: 'idle' }.
+    this.initializingPromise = null
     this.forceDownload = true
     await this.initialize()
   }

@@ -50,6 +50,7 @@ export async function buildApp(
     version: config.ffmpeg.version,
     downloadUrl: config.ffmpeg.sourceUrl,
     ffmpegPathOverride: deps.ffmpegPathOverride,
+    logger,
   })
   await ffmpegManager.initialize()
 

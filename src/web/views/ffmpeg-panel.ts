@@ -56,21 +56,8 @@ async function loadFfmpegStatus(): Promise<void> {
     }
 
     if (downloadContainer) {
-      if (status.available) {
-        downloadContainer.innerHTML = `
-          <p class="text-success">✓ FFmpeg 已安装并可用</p>
-        `
-      } else {
-        downloadContainer.innerHTML = `
-          <p class="text-muted">FFmpeg 未安装，需要下载后才能使用录制功能。</p>
-          <button class="btn" id="download-ffmpeg-btn">下载 FFmpeg</button>
-          <div id="download-progress" class="download-progress"></div>
-          ${isMac() ? '<p class="text-muted" style="margin-top: 1rem"><strong>提示：</strong> macOS 可能需要允许"任何来源"应用以运行 FFmpeg。请在终端运行：<code>sudo spctl --master-disable</code></p>' : ''}
-        `
-
-        const downloadBtn = $('#download-ffmpeg-btn')
-        downloadBtn?.addEventListener('click', handleDownload)
-      }
+      downloadContainer.innerHTML = renderDownloadSection(status)
+      wireDownload(downloadContainer)
     }
   } catch (err) {
     console.error('[ffmpeg-panel] status error:', err)
@@ -81,6 +68,40 @@ async function loadFfmpegStatus(): Promise<void> {
       downloadContainer.innerHTML = '<p class="text-muted">加载失败</p>'
     }
   }
+}
+
+/**
+ * "下载安装"卡片按 FFmpegStatus.source 拆分渲染：
+ * - bundled / override：✓ 已在项目内，正常使用
+ * - system：临时用系统 ffmpeg（启动时下载失败回退到这里）。显示提示 + 仍可点击"重新下载"
+ * - missing：完全没装，强制要求下载
+ */
+function renderDownloadSection(status: FFmpegStatusSummary): string {
+  if (status.source === 'bundled' || status.source === 'override') {
+    return `<p class="text-success">✓ FFmpeg 已安装并可用</p>`
+  }
+
+  if (status.source === 'system') {
+    return `
+      <p class="text-warning">⚠ 启动时下载失败，目前使用系统 FFmpeg。建议重新下载项目内版本以保证版本一致。</p>
+      <button class="btn" id="download-ffmpeg-btn">下载项目内 FFmpeg</button>
+      <div id="download-progress" class="download-progress"></div>
+      ${isMac() ? '<p class="text-muted" style="margin-top: 1rem"><strong>提示：</strong> macOS 可能需要允许"任何来源"应用以运行 FFmpeg。请在终端运行：<code>sudo spctl --master-disable</code></p>' : ''}
+    `
+  }
+
+  // missing
+  return `
+    <p class="text-muted">FFmpeg 未安装，需要下载后才能使用录制功能。</p>
+    <button class="btn" id="download-ffmpeg-btn">下载 FFmpeg</button>
+    <div id="download-progress" class="download-progress"></div>
+    ${isMac() ? '<p class="text-muted" style="margin-top: 1rem"><strong>提示：</strong> macOS 可能需要允许"任何来源"应用以运行 FFmpeg。请在终端运行：<code>sudo spctl --master-disable</code></p>' : ''}
+  `
+}
+
+function wireDownload(container: Element): void {
+  const downloadBtn = container.querySelector<HTMLButtonElement>('#download-ffmpeg-btn')
+  downloadBtn?.addEventListener('click', handleDownload)
 }
 
 async function handleDownload(): Promise<void> {

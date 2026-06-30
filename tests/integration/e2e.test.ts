@@ -304,3 +304,128 @@ describe('E2E: Status & Health', () => {
     expect(res.body).toEqual({ ok: true })
   })
 })
+
+describe('E2E: Source-switch resilience (HANDOFF B7)', () => {
+  it('keeps listener alive across a source-end / re-pipe cycle', async () => {
+    // Start source 1 with a long-ish push so the listener has time to attach
+    const source1Frames = Array.from({ length: 10 }, () => silentMp3Frame())
+    const source1Promise = putSource(source1Frames, 50)
+
+    // Give the broadcaster time to bind to source 1
+    await new Promise((r) => setTimeout(r, 200))
+
+    expect((await request(app.server).get('/api/status')).body.broadcaster.isLive).toBe(true)
+
+    // Open a listener and capture chunks. After source 1 ends, we expect
+    // the listener's HTTP connection to still be open (broadcaster no
+    // longer kicks listeners on source-end).
+    const listenerChunks: Buffer[] = []
+    const listenerPromise = new Promise<void>((resolve, reject) => {
+      const address = app.server.address()
+      const port = typeof address === 'object' && address !== null ? address.port : 0
+      const req = httpRequest(
+        {
+          hostname: '127.0.0.1',
+          port,
+          path: '/stream',
+          method: 'GET',
+          headers: { 'User-Agent': 'ResilienceTester/1.0' },
+        },
+        (res) => {
+          if (res.statusCode !== 200) {
+            reject(new Error('listener got ' + res.statusCode))
+            return
+          }
+          res.on('data', (c: Buffer) => listenerChunks.push(c))
+          res.on('end', () => reject(new Error('listener stream ended unexpectedly')))
+          res.on('close', () => resolve())
+        },
+      )
+      req.on('error', reject)
+      req.end()
+      setTimeout(() => req.destroy(), 1000)
+    })
+
+    // Wait for source 1 to end and verify the listener was NOT kicked
+    await source1Promise
+    await new Promise((r) => setTimeout(r, 600))
+
+    expect(listenerChunks.length).toBeGreaterThan(0)
+    // broadcaster reports offline after source-end
+    const status = (await request(app.server).get('/api/status')).body
+    expect(status.broadcaster.isLive).toBe(false)
+
+    await listenerPromise
+  })
+
+  it('switching to a second source reuses the same listener connection', async () => {
+    // Phase 1: source1 pushes, listener attaches, listener gets chunks.
+    // Phase 2: source1 ends. listener survives (verified by T1 — here we
+    // focus on reuse: same socket sees chunks from source2 without being
+    // re-issued).
+
+    let listenerChunks = 0
+    let listenerStatus: number | null = null
+    let listenerReq: ReturnType<typeof httpRequest> | null = null
+    let listenerDestroyed = false
+
+    function destroyListener(): void {
+      if (listenerReq && !listenerDestroyed) {
+        listenerDestroyed = true
+        try { listenerReq.destroy() } catch {}
+      }
+    }
+
+    function attachListener(): Promise<void> {
+      const address = app.server.address()
+      const port = typeof address === 'object' && address !== null ? address.port : 0
+      return new Promise<void>((resolve) => {
+        const req = httpRequest(
+          {
+            hostname: '127.0.0.1',
+            port,
+            path: '/stream',
+            method: 'GET',
+            headers: { 'User-Agent': 'ResilienceTester/2.0' },
+          },
+          (res) => {
+            listenerStatus = res.statusCode ?? null
+            if (res.statusCode !== 200) { resolve(); return }
+            res.on('data', () => { listenerChunks += 1 })
+            res.on('close', () => resolve())
+            res.on('end', () => resolve())
+          },
+        )
+        listenerReq = req
+        req.on('error', () => resolve())
+        req.end()
+      })
+    }
+
+    // Phase 1: start source1 first, then attach listener
+    const source1Frames = Array.from({ length: 15 }, () => silentMp3Frame())
+    const source1Promise = putSource(source1Frames, 50)
+    // Give broadcaster a moment, then attach
+    await new Promise((r) => setTimeout(r, 150))
+    const listenerPromise = attachListener()
+
+    // Wait for source1 to end
+    await source1Promise
+    await new Promise((r) => setTimeout(r, 300))
+    const chunksAfterSource1 = listenerChunks
+    expect(chunksAfterSource1).toBeGreaterThan(0)
+    expect(listenerStatus).toBe(200)
+
+    // Phase 2: start source2. The listener is still attached (T1 verified
+    // survival). It should receive source2's chunks without re-subscribing.
+    const source2Frames = Array.from({ length: 15 }, () => silentMp3Frame())
+    const source2Promise = putSource(source2Frames, 50)
+    await source2Promise
+    await new Promise((r) => setTimeout(r, 300))
+
+    expect(listenerChunks).toBeGreaterThan(chunksAfterSource1)
+
+    destroyListener()
+    await listenerPromise
+  })
+})

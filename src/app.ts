@@ -31,6 +31,7 @@ import { registerWsRoute } from './routes/ws.js'
 
 export interface BuildAppDeps {
   ffmpegPathOverride?: string
+  binRoot?: string
 }
 
 export async function buildApp(
@@ -46,7 +47,7 @@ export async function buildApp(
   const db = await initDb(config.db.path)
 
   const ffmpegManager = new FFmpegManager({
-    binRoot: 'bin/ffmpeg',
+    binRoot: deps.binRoot ?? 'bin/ffmpeg',
     version: config.ffmpeg.version,
     downloadUrl: config.ffmpeg.sourceUrl,
     ffmpegPathOverride: deps.ffmpegPathOverride,
@@ -137,7 +138,7 @@ export async function buildApp(
   registerArchiveRoutes(app, { archiver })
   registerPlaylistRoutes(app, { playlistService, fileRepo: uploadedFilesRepo })
   registerListenersRoutes(app, { listenerManager })
-  registerFfmpegRoutes(app, { ffmpegManager, wsHub, logger })
+  registerFfmpegRoutes(app, { ffmpegManager, wsHub, logger, config })
   registerConfigRoutes(app, { config, wsHub })
   registerWsRoute(app, { wsHub })
 

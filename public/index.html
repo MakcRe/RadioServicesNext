@@ -11,6 +11,7 @@
       --text: #c9d1d9;
       --text-dim: #8b949e;
       --border: #30363d;
+      --accent: #58a6ff;
       --radius: 8px;
     }
 
@@ -64,14 +65,21 @@
     audio {
       width: 100%;
       display: block;
-      accent-color: #58a6ff;
+      accent-color: var(--accent);
     }
 
-    .hint {
-      font-size: 12px;
+    .status {
+      font-size: 13px;
       color: var(--text-dim);
-      margin-top: 10px;
+      margin-top: 12px;
+      min-height: 18px;
     }
+
+    .status[data-state="waiting"] { color: #d29922; }
+    .status[data-state="retry"] { color: #d29922; }
+    .status[data-state="live"] { color: #3fb950; }
+    .status[data-state="ended"] { color: var(--text-dim); }
+    .status[data-state="error"] { color: #f85149; }
 
     .footer {
       font-size: 12px;
@@ -79,7 +87,7 @@
     }
 
     .footer a {
-      color: #58a6ff;
+      color: var(--accent);
       text-decoration: none;
     }
 
@@ -95,16 +103,124 @@
     <p class="tagline">在线广播</p>
 
     <div class="player">
-      <audio controls preload="none">
+      <audio id="player" controls preload="none">
         <source src="/stream" type="audio/mpeg">
         您的浏览器不支持音频播放。
       </audio>
-      <p class="hint">点击播放按钮收听直播</p>
+      <p id="status" class="status" data-state="idle">点击播放按钮收听直播</p>
     </div>
 
     <p class="footer">
       © 2026 · 管理入口 → <a href="/admin">/admin</a>
     </p>
   </div>
+
+  <script>
+    (function () {
+      'use strict';
+      var audio = document.getElementById('player');
+      var statusEl = document.getElementById('status');
+      var pollTimer = null;
+      var pollInterval = 5000;
+      var pollIntervalMax = 30000;
+      var polling = false;
+
+      function setStatus(text, state) {
+        statusEl.textContent = text;
+        if (state) statusEl.setAttribute('data-state', state);
+      }
+
+      async function loadConfig() {
+        try {
+          var res = await fetch('/api/config');
+          if (!res.ok) return;
+          var cfg = await res.json();
+          if (cfg && cfg.stream) {
+            if (typeof cfg.stream.pollIntervalMs === 'number') {
+              pollInterval = cfg.stream.pollIntervalMs;
+            }
+            if (typeof cfg.stream.pollIntervalMaxMs === 'number') {
+              pollIntervalMax = cfg.stream.pollIntervalMaxMs;
+            }
+            if (pollInterval > pollIntervalMax) pollInterval = pollIntervalMax;
+          }
+        } catch (_e) { /* network hiccup, keep defaults */ }
+      }
+
+      function startStream() {
+        // cache-bust so the browser won't reuse a stale connection
+        audio.src = '/stream?t=' + Date.now();
+        audio.load();
+        return audio.play().then(function () {
+          setStatus('收听中', 'live');
+        }).catch(function () {
+          // autoplay blocked; user must click play
+          setStatus('点击播放按钮收听直播', 'idle');
+        });
+      }
+
+      function stopPolling() {
+        polling = false;
+        if (pollTimer) {
+          clearTimeout(pollTimer);
+          pollTimer = null;
+        }
+      }
+
+      function pollForSource() {
+        if (polling) return;
+        polling = true;
+
+        function tick() {
+          if (!polling) return;
+          fetch('/api/status')
+            .then(function (res) {
+              if (!res.ok) throw new Error('status ' + res.status);
+              return res.json();
+            })
+            .then(function (data) {
+              if (data && data.broadcaster && data.broadcaster.isLive) {
+                stopPolling();
+                startStream();
+              } else {
+                setStatus('等待直播开始…', 'waiting');
+                pollTimer = setTimeout(tick, pollInterval);
+              }
+            })
+            .catch(function () {
+              setStatus('网络异常，正在重试…', 'error');
+              pollTimer = setTimeout(tick, pollInterval);
+            });
+        }
+        tick();
+      }
+
+      audio.addEventListener('error', function () {
+        setStatus('连接中断，正在重试…', 'retry');
+        pollForSource();
+      });
+      audio.addEventListener('stalled', function () {
+        setStatus('缓冲中…', 'retry');
+      });
+      audio.addEventListener('play', function () {
+        setStatus('收听中', 'live');
+      });
+      audio.addEventListener('playing', function () {
+        setStatus('收听中', 'live');
+      });
+      audio.addEventListener('ended', function () {
+        // not expected with a live source, but cover the case if the server
+        // explicitly closes the stream (e.g. /api/source/stop)
+        setStatus('直播已结束', 'ended');
+        pollForSource();
+      });
+      audio.addEventListener('pause', function () {
+        // user manually paused; don't auto-reconnect
+      });
+
+      // initialize
+      loadConfig();
+    })();
+  </script>
 </body>
 </html>

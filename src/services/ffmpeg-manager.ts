@@ -92,6 +92,21 @@ export class FFmpegManager extends EventEmitter {
   }
 
   private async doInitialize(): Promise<FFmpegStatus> {
+    // Pre-flight: warn when a "loose" ffmpeg binary sits at the top of
+    // binRoot (e.g. someone dropped an executable there by hand) but isn't
+    // in the `.versions/{version}/` slot the manager searches. Without
+    // this, the binary goes unused and the manager silently re-downloads
+    // on every boot.
+    if (!this.opts.ffmpegPathOverride) {
+      const loosePath = join(this.opts.binRoot, this.binaryName())
+      if (existsSync(loosePath)) {
+        this.opts.logger?.warn(
+          { loosePath, expected: join(this.opts.binRoot, '.versions', this.opts.version, this.binaryName()) },
+          '[ffmpeg] found a loose ffmpeg binary at the binRoot root; move it into the .versions/{version}/ subdirectory to be picked up',
+        )
+      }
+    }
+
     // 1. Override (调试显式指定路径)
     if (this.opts.ffmpegPathOverride) {
       if (await this.canExecute(this.opts.ffmpegPathOverride)) {

@@ -115,6 +115,7 @@ export interface ConfigResponse {
   }
   logging: { directory: string; level: string; retentionDays: number }
   ffmpeg: { version: string; sourceUrl: string }
+  stream: { pollIntervalMs: number; pollIntervalMaxMs: number }
 }
 
 // SSE event types from /api/ffmpeg/download/status

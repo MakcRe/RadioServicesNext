@@ -30,3 +30,7 @@ logging:
   directory: "logs"
   level: "info"
   retentionDays: 30
+
+stream:
+  pollIntervalMs: 5000
+  pollIntervalMaxMs: 30000

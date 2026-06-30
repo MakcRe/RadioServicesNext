@@ -41,6 +41,13 @@ export interface DbConfig {
   path: string
 }
 
+export interface StreamConfig {
+  /** Front-end (landing page) poll interval for /api/status, in milliseconds. */
+  pollIntervalMs: number
+  /** Hard upper bound the front-end should never exceed, in milliseconds. */
+  pollIntervalMaxMs: number
+}
+
 export interface AppConfig {
   db: DbConfig
   server: ServerConfig
@@ -49,6 +56,7 @@ export interface AppConfig {
   archive: ArchiveConfig
   playlist: PlaylistConfig
   logging: LoggingConfig
+  stream: StreamConfig
 }
 
 const DEFAULTS: AppConfig = {
@@ -74,6 +82,10 @@ const DEFAULTS: AppConfig = {
     directory: 'logs',
     level: 'info',
     retentionDays: 30,
+  },
+  stream: {
+    pollIntervalMs: 5000,
+    pollIntervalMaxMs: 30000,
   },
 }
 

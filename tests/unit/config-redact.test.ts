@@ -29,6 +29,10 @@ function makeConfig(): AppConfig {
       level: 'info',
       retentionDays: 30,
     },
+    stream: {
+      pollIntervalMs: 5000,
+      pollIntervalMaxMs: 30000,
+    },
   }
 }
 
@@ -75,6 +79,13 @@ describe('Config routes', () => {
       expect(body.server.port).toBe(8000)
       expect(body.archive.retentionDays).toBe(7)
       expect(body.playlist.allowedExtensions).toContain('.mp3')
+    })
+
+    it('exposes stream poll interval to the front-end', async () => {
+      const res = await app.inject({ method: 'GET', url: '/api/config' })
+      const body = JSON.parse(res.body)
+      expect(body.stream.pollIntervalMs).toBe(5000)
+      expect(body.stream.pollIntervalMaxMs).toBe(30000)
     })
   })
 

@@ -117,10 +117,11 @@ export class FFmpegManager extends EventEmitter {
         db: { path: '' },
         server: { host: '0.0.0.0', port: 8000 },
         auth: { sourcePassword: '' },
-        archive: { directory: '', segmentDurationSec: 3600, retentionDays: 7, minFreeSpaceMB: 500 },
-        playlist: { uploadDir: '', maxFileSizeMB: 500, allowedExtensions: [] },
-        logging: { directory: '', level: 'info', retentionDays: 30 },
-        ffmpeg: { version: this.opts.version, sourceUrl: this.opts.downloadUrl },
+        ffmpeg: { version: '', sourceUrl: '' },
+        archive: { directory: '', segmentDurationSec: 0, retentionDays: 0, minFreeSpaceMB: 0 },
+        playlist: { uploadDir: '', maxFileSizeMB: 0, allowedExtensions: [] },
+        logging: { directory: '', level: '', retentionDays: 0 },
+        stream: { pollIntervalMs: 5000, pollIntervalMaxMs: 30000 },
       }
       const result = await downloadFfmpeg(
         config,

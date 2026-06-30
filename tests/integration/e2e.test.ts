@@ -67,6 +67,10 @@ logging:
   level: "error"
   retentionDays: 1
 
+stream:
+  pollIntervalMs: 5000
+  pollIntervalMaxMs: 30000
+
 db:
   path: "${dbPath}"
 `

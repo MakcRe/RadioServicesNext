@@ -1,64 +1,143 @@
-import type { PluginContext, RouteOptions } from '@radio-services/shared';
-import type { FFmpegService } from '../services/ffmpeg-service.js';
+import type { PluginContext, RouteOptions } from '@radio-services/shared'
+import { FFmpegManager } from '../services/ffmpeg-manager.js'
+import type { WsHub } from '@radio-services/core'
+import type { FfmpegRuntimeState } from '../services/ffmpeg-state.js'
 
-export function registerFFmpegRoutes(ctx: PluginContext, service: FFmpegService): void {
+function relativizePath(absPath: string, binRoot: string): string {
+  if (!absPath.startsWith(binRoot)) return absPath
+  const idx = absPath.lastIndexOf('ffmpeg/')
+  if (idx < 0) return absPath
+  return `bin/${absPath.slice(idx)}`
+}
+
+export function registerFfmpegRoutes(
+  ctx: PluginContext,
+  deps: {
+    ffmpegManager: FFmpegManager
+    wsHub: WsHub
+    runtimeState: FfmpegRuntimeState
+    binRoot: string
+  }
+): void {
   const routes: RouteOptions[] = [
     {
-      method: 'POST',
-      url: '/ffmpeg/transcode',
-      handler: async (...args: unknown[]) => {
-        const data = args[0] as { path: string; options?: Record<string, unknown> };
-        return service.transcode(data);
-      }
-    },
-    {
       method: 'GET',
-      url: '/ffmpeg/jobs/:jobId',
-      handler: async (...args: unknown[]) => {
-        const jobId = args[0] as string;
-        return service.getTranscodeStatus(jobId);
-      }
-    },
-    {
-      method: 'GET',
-      url: '/ffmpeg/audio-info',
-      handler: async (...args: unknown[]) => {
-        const params = args[0] as { path: string };
-        return service.getAudioInfo(params.path);
-      }
-    },
-    {
-      method: 'POST',
-      url: '/ffmpeg/convert',
-      handler: async (...args: unknown[]) => {
-        const data = args[0] as { path: string; outputFormat: string };
-        return service.convertFormat(data);
-      }
-    },
-    {
-      method: 'POST',
-      url: '/ffmpeg/extract-cover',
-      handler: async (...args: unknown[]) => {
-        const data = args[0] as { path: string; outputPath?: string };
-        return service.extractCoverArt(data);
-      }
-    },
-    {
-      method: 'POST',
-      url: '/ffmpeg/normalize',
-      handler: async (...args: unknown[]) => {
-        const data = args[0] as { path: string; targetLevel?: number };
-        return service.normalizeAudio(data);
-      }
-    },
-    {
-      method: 'GET',
-      url: '/ffmpeg/formats',
+      url: '/api/ffmpeg/status',
       handler: async () => {
-        return service.getAvailableFormats();
+        const status = deps.ffmpegManager.getStatus()
+        return {
+          ...status,
+          path: status.path ? relativizePath(status.path, deps.binRoot) : null,
+        }
+      }
+    },
+    {
+      method: 'GET',
+      url: '/api/ffmpeg/download/status',
+      handler: async () => {
+        return { state: 'idle' }
+      }
+    },
+    {
+      method: 'POST',
+      url: '/api/ffmpeg/download',
+      handler: async (body: unknown) => {
+        const { version } = (body as { version?: string }) ?? {}
+        deps.ffmpegManager.triggerDownload(version).catch((err) =>
+          ctx.logger.error('[ffmpeg trigger] ' + String(err))
+        )
+        return { ok: true, version: version ?? null }
+      }
+    },
+    {
+      method: 'POST',
+      url: '/api/ffmpeg/upgrade',
+      handler: async () => {
+        deps.ffmpegManager.triggerDownload().catch((err) =>
+          ctx.logger.error('[ffmpeg upgrade] ' + String(err))
+        )
+        return { ok: true }
+      }
+    },
+    {
+      method: 'GET',
+      url: '/api/ffmpeg/remote-versions',
+      handler: async () => {
+        const remote = await deps.ffmpegManager.listLatestRemoteVersions(8)
+        const installed = await deps.ffmpegManager.listVersions()
+        const installedMM = new Set(installed.map((v) => v.split('.').slice(0, 2).join('.')))
+        const annotated = remote.map((v) => ({
+          version: v,
+          installed: installedMM.has(v.split('.').slice(0, 2).join('.')),
+        }))
+        return { versions: annotated }
+      }
+    },
+    {
+      method: 'POST',
+      url: '/api/ffmpeg/test',
+      handler: async () => {
+        const status = deps.ffmpegManager.getStatus()
+        if (!status.available || !status.path) {
+          return { ok: false, error: 'ffmpeg not available' }
+        }
+        const { spawn } = await import('child_process')
+        return new Promise((resolve) => {
+          const path = status.path as string
+          const proc = spawn(path, ['-version'])
+          let output = ''
+          proc.stdout!.on('data', (c: Buffer) => (output += c.toString()))
+          proc.on('close', (code: number | null) => resolve({ ok: code === 0, output: output.slice(0, 500), path }))
+          proc.on('error', (err: Error) => resolve({ ok: false, error: err.message }))
+        })
+      }
+    },
+    {
+      method: 'GET',
+      url: '/api/ffmpeg/versions',
+      handler: async () => {
+        const versions = await deps.ffmpegManager.listVersions()
+        const status = deps.ffmpegManager.getStatus()
+        const userSelected = await deps.runtimeState.getSelectedVersion()
+        const current = (userSelected ?? ctx.config.ffmpeg.version)?.replace(/\.0$/, '') ?? null
+        return {
+          versions,
+          current,
+          recommended: versions[0] ?? null,
+          currentPath: status.path ? relativizePath(status.path, deps.binRoot) : null,
+        }
+      }
+    },
+    {
+      method: 'POST',
+      url: '/api/ffmpeg/select',
+      handler: async (body: unknown) => {
+        const { version } = body as { version?: string }
+        if (!version) {
+          throw new Error('version 必填')
+        }
+        const versions = await deps.ffmpegManager.listVersions()
+        if (!versions.includes(version)) {
+          throw new Error(`版本 ${version} 不存在`)
+        }
+        await deps.runtimeState.setSelectedVersion(version)
+        const status = await deps.ffmpegManager.setVersion(version)
+        deps.wsHub.emitEvent('config-changed', { key: 'ffmpeg.version' })
+        if (!status.available) {
+          return {
+            success: true,
+            available: false,
+            message: `已选择版本 ${version}，但该版本尚未安装。请下载或安装。`,
+          }
+        }
+        return {
+          success: true,
+          available: true,
+          message: `已切换到版本 ${version}（实时生效）`,
+        }
       }
     }
-  ];
+  ]
 
-  routes.forEach(route => ctx.registerRoute(route));
+  routes.forEach(route => ctx.registerRoute(route))
 }

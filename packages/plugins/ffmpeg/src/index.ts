@@ -1,31 +1,65 @@
-import type { Plugin, PluginContext } from '@radio-services/shared';
-import { FFmpegService } from './services/ffmpeg-service.js';
-import { registerFFmpegRoutes } from './routes/ffmpeg.js';
+import type { Plugin, PluginContext } from '@radio-services/shared'
+import { FFmpegManager } from './services/ffmpeg-manager.js'
+import type { FfmpegRuntimeState } from './services/ffmpeg-state.js'
+import type { WsHub } from '@radio-services/core'
+import { registerFfmpegRoutes } from './routes/ffmpeg.js'
 
 export default function createFFmpegPlugin(): Plugin {
-  let ffmpegService: FFmpegService;
-  let context: PluginContext;
+  let ffmpegManager: FFmpegManager
+  let runtimeState: FfmpegRuntimeState
+  let context: PluginContext
 
   return {
     name: 'ffmpeg',
     version: '0.1.0',
 
-    init(ctx: PluginContext) {
-      context = ctx;
-      ffmpegService = new FFmpegService(ctx);
-      registerFFmpegRoutes(ctx, ffmpegService);
+    async init(ctx: PluginContext) {
+      context = ctx
+
+      const binRoot = 'bin/ffmpeg'
+
+      const { createFfmpegRuntimeState, defaultStatePath } = await import('./services/ffmpeg-state.js')
+      runtimeState = createFfmpegRuntimeState(defaultStatePath(binRoot))
+
+      ffmpegManager = new FFmpegManager({
+        binRoot,
+        version: ctx.config.ffmpeg.version,
+        downloadUrl: ctx.config.ffmpeg.sourceUrl,
+        logger: ctx.logger as unknown as import('pino').Logger,
+        runtimeState,
+      })
+
+      const wsHub = ctx.getService<WsHub>('wsHub')
+      if (!wsHub) {
+        throw new Error('WsHub service not available')
+      }
+
+      await ffmpegManager.initialize()
+
+      registerFfmpegRoutes(ctx, {
+        ffmpegManager,
+        wsHub,
+        runtimeState,
+        binRoot,
+      })
+
+      ctx.registerService('ffmpegManager', ffmpegManager)
+      ctx.registerService('runtimeState', runtimeState)
     },
 
     async start() {
-      context.logger.info('FFmpeg plugin started');
+      context.logger.info('FFmpeg plugin started')
     },
 
     async stop() {
-      context.logger.info('FFmpeg plugin stopped');
+      if (runtimeState) {
+        await runtimeState.close()
+      }
+      context.logger.info('FFmpeg plugin stopped')
     },
 
     async healthCheck() {
-      return { healthy: true };
+      return { healthy: true, ffmpegAvailable: ffmpegManager.getStatus().available }
     }
-  };
+  }
 }

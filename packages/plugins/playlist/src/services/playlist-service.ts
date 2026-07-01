@@ -1,35 +1,57 @@
-import type { PluginContext } from '@radio-services/shared';
+import type { PlaylistRepo, PlaylistRow } from '../repos/playlist.repo.js'
+import type { UploadedFilesRepo } from '../repos/uploaded-files.repo.js'
+
+export interface AddSongInput {
+  filename: string
+  display_name: string
+  duration_sec: number | null
+}
 
 export class PlaylistService {
-  constructor(private context: PluginContext) {
-    this.context.logger.info('PlaylistService initialized');
+  constructor(
+    private repo: PlaylistRepo,
+    private fileRepo: UploadedFilesRepo,
+  ) {}
+
+  add(input: AddSongInput): number {
+    const file = this.fileRepo.getByFilename(input.filename)
+    if (!file) throw new Error(`uploaded file not found: ${input.filename}`)
+
+    const row = this.repo.insert({
+      ...input,
+      position: this.repo.maxPosition() + 1,
+    })
+    return row.id
   }
 
-  async getPlaylist(_id: string) {
-    return { id: 'sample', name: 'Sample Playlist', tracks: [] };
+  list(): PlaylistRow[] {
+    return this.repo.list()
   }
 
-  async getAllPlaylists() {
-    return [];
+  remove(id: number): void {
+    const existing = this.repo.getById(id)
+    if (!existing) throw new Error(`playlist entry not found: ${id}`)
+    this.repo.delete(id)
+    const remaining = this.repo.list().map((r) => r.id)
+    if (remaining.length > 0) this.repo.reorder(remaining)
   }
 
-  async createPlaylist(data: { name: string }) {
-    return { id: 'new-id', name: data.name, tracks: [] };
+  reorder(ids: number[]): void {
+    this.repo.reorder(ids)
   }
 
-  async updatePlaylist(_id: string, data: Partial<{ name: string }>) {
-    return { id: 'sample', ...data };
+  updateDisplay(id: number, displayName: string): void {
+    this.repo.update(id, { display_name: displayName })
   }
 
-  async deletePlaylist(_id: string) {
-    return { success: true };
+  nextSong(): PlaylistRow | null {
+    const list = this.repo.list()
+    return list[0] ?? null
   }
 
-  async addTrack(_playlistId: string, _trackId: string, _position?: number) {
-    return { playlistId: 'sample', trackId: 'sample', position: 0 };
-  }
-
-  async removeTrack(_playlistId: string, _trackId: string) {
-    return { success: true };
+  popFirst(): PlaylistRow | null {
+    const first = this.nextSong()
+    if (first) this.remove(first.id)
+    return first
   }
 }

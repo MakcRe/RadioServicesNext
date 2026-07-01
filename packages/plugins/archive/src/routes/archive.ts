@@ -1,76 +1,60 @@
-import type { PluginContext, RouteOptions } from '@radio-services/shared';
-import type { ArchiveService } from '../services/archive-service.js';
+import type { PluginContext, RouteOptions } from '@radio-services/shared'
+import type { Archiver } from '../services/archiver.js'
+import { join, extname } from 'path'
+import { stat, readFile } from 'fs/promises'
 
-export function registerArchiveRoutes(ctx: PluginContext, service: ArchiveService): void {
+export function registerArchiveRoutes(
+  ctx: PluginContext,
+  deps: {
+    archiver: Archiver
+  }
+): void {
   const routes: RouteOptions[] = [
     {
       method: 'GET',
-      url: '/archives',
+      url: '/api/archive/list',
       handler: async () => {
-        return service.getAllArchives();
+        return { files: await deps.archiver.list() }
       }
     },
     {
       method: 'GET',
-      url: '/archives/:id',
-      handler: async (...args: unknown[]) => {
-        const id = args[0] as string;
-        return service.getArchive(id);
+      url: '/api/archive/:filename',
+      handler: async (params: unknown) => {
+        const { filename } = params as { filename: string }
+        if (filename.includes('..') || filename.includes('/')) {
+          throw new Error('invalid filename')
+        }
+        if (extname(filename) !== '.mp3') {
+          throw new Error('invalid file')
+        }
+        const archiveDir = deps.archiver.getArchiveDir()
+        const filepath = join(archiveDir, filename)
+        try {
+          const stats = await stat(filepath)
+          const buf = await readFile(filepath)
+          return {
+            data: buf,
+            headers: {
+              'Content-Length': String(stats.size),
+              'Content-Type': 'audio/mpeg',
+              'Accept-Ranges': 'bytes',
+            }
+          }
+        } catch {
+          throw new Error('not found')
+        }
       }
     },
     {
       method: 'POST',
-      url: '/archives',
-      handler: async (...args: unknown[]) => {
-        const data = args[0] as { name: string; description?: string };
-        return service.createArchive(data);
-      }
-    },
-    {
-      method: 'PUT',
-      url: '/archives/:id',
-      handler: async (...args: unknown[]) => {
-        const id = args[0] as string;
-        const data = args[1] as { name?: string; description?: string };
-        return service.updateArchive(id, data);
-      }
-    },
-    {
-      method: 'DELETE',
-      url: '/archives/:id',
-      handler: async (...args: unknown[]) => {
-        const id = args[0] as string;
-        return service.deleteArchive(id);
-      }
-    },
-    {
-      method: 'GET',
-      url: '/archives/:id/entries',
-      handler: async (...args: unknown[]) => {
-        const id = args[0] as string;
-        const options = args[1] as { limit?: number; offset?: number } | undefined;
-        return service.getEntries(id, options);
-      }
-    },
-    {
-      method: 'POST',
-      url: '/archives/:id/entries',
-      handler: async (...args: unknown[]) => {
-        const id = args[0] as string;
-        const data = args[1] as { trackId: string; metadata?: Record<string, unknown> };
-        return service.addEntry(id, data);
-      }
-    },
-    {
-      method: 'DELETE',
-      url: '/archives/:id/entries/:entryId',
-      handler: async (...args: unknown[]) => {
-        const id = args[0] as string;
-        const entryId = args[1] as string;
-        return service.removeEntry(id, entryId);
+      url: '/api/archive/cleanup',
+      handler: async () => {
+        await deps.archiver.cleanup()
+        return { ok: true }
       }
     }
-  ];
+  ]
 
-  routes.forEach(route => ctx.registerRoute(route));
+  routes.forEach(route => ctx.registerRoute(route))
 }

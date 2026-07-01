@@ -11,5 +11,8 @@
   "dependencies": {
     "@radio-services/shared": "workspace:*",
     "@radio-services/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/ua-parser-js": "^0.7.39"
   }
 }

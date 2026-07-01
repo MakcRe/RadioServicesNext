@@ -4,6 +4,7 @@
     "outDir": "dist",
     "typeRoots": ["./src/types", "./node_modules/@types"],
     "paths": {
+      "@radio-services/core": ["../core/src"],
       "@radio-services/shared": ["../shared/src"]
     }
   },

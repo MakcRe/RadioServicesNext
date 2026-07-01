@@ -1,2 +1,6 @@
 export * from './services/index.js'
 export * from './db/index.js'
+export { PluginLoader } from './plugin-system/plugin-loader.js'
+export { PluginRegistry } from './plugin-system/plugin-registry.js'
+export { PluginContextImpl } from './plugin-system/plugin-context-impl.js'
+export { PluginDiscoverer } from './plugin-system/plugin-discoverer.js'

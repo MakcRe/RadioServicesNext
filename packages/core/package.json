@@ -24,7 +24,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@radio-services/shared": "workspace:*",
+    "@radio-services/shared": "file:../shared",
     "better-sqlite3": "^11.3.0",
     "ua-parser-js": "^1.0.39"
   },

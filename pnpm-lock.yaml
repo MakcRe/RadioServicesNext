@@ -43,6 +43,42 @@ importers:
         specifier: ^0.7.39
         version: 0.7.39
 
+  packages/plugins/archive:
+    dependencies:
+      '@radio-services/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@radio-services/shared':
+        specifier: workspace:*
+        version: link:../../shared
+
+  packages/plugins/ffmpeg:
+    dependencies:
+      '@radio-services/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@radio-services/shared':
+        specifier: workspace:*
+        version: link:../../shared
+
+  packages/plugins/listeners:
+    dependencies:
+      '@radio-services/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@radio-services/shared':
+        specifier: workspace:*
+        version: link:../../shared
+
+  packages/plugins/playlist:
+    dependencies:
+      '@radio-services/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@radio-services/shared':
+        specifier: workspace:*
+        version: link:../../shared
+
   packages/server:
     dependencies:
       '@fastify/multipart':

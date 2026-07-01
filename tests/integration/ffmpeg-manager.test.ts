@@ -2,8 +2,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, writeFileSync, chmodSync, existsSync, mkdirSync, copyFileSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { FFmpegManager, normalizeVersion } from '../../src/services/ffmpeg-manager.js'
-import * as downloader from '../../src/services/ffmpeg-downloader.js'
+import { FFmpegManager } from '@radio-services/plugins/ffmpeg'
+import { normalizeVersion } from '@radio-services/plugins/ffmpeg'
+import * as downloader from '@radio-services/plugins/ffmpeg'
 
 let tempDir: string
 

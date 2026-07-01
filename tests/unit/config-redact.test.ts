@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import Fastify from 'fastify'
-import { registerConfigRoutes } from '../../src/routes/config.js'
-import { WsHub } from '../../src/services/ws-hub.js'
-import type { AppConfig } from '../../src/config.js'
+import { registerConfigRoutes } from '@radio-services/server'
+import { WsHub } from '@radio-services/core'
+import type { RadioConfig } from '@radio-services/shared'
 
-function makeConfig(): AppConfig {
+function makeConfig(): RadioConfig {
   return {
     db: { path: 'data/radio.db' },
     server: { host: '0.0.0.0', port: 8000 },
@@ -38,7 +38,7 @@ function makeConfig(): AppConfig {
 
 describe('Config routes', () => {
   let app: ReturnType<typeof Fastify>
-  let config: AppConfig
+  let config: RadioConfig
   let wsHub: WsHub
 
   beforeEach(async () => {

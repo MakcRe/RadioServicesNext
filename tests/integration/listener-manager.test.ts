@@ -2,9 +2,9 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { initDb } from '../../src/db/sqlite.js'
-import { ListenerLogsRepo } from '../../src/db/repos/listener-logs.repo.js'
-import { ListenerManager } from '../../src/services/listener-manager.js'
+import { initDb } from '@radio-services/core'
+import { ListenerLogsRepo } from '@radio-services/core'
+import { ListenerManager } from '@radio-services/core'
 import type Database from 'better-sqlite3'
 
 let tempDir: string

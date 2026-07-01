@@ -1,0 +1,8 @@
+{
+  "plugins": [
+    "playlist",
+    "archive",
+    "listeners",
+    "ffmpeg"
+  ]
+}

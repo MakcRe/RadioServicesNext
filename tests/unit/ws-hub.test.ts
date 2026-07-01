@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { WsHub, type EventMap } from '../../src/services/ws-hub.js'
+import { WsHub, type EventMap } from '@radio-services/core'
 
 describe('WsHub', () => {
   it('delivers events to subscribers', () => {

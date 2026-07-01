@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, existsSync, writeFileSync, mkdirSync, utimesSync, 
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { PassThrough } from 'stream'
-import { Archiver } from '../../src/services/archiver.js'
+import { Archiver } from '@radio-services/plugins/archive'
 
 let tempDir: string
 let archiveDir: string

@@ -1,8 +1,9 @@
 import * as esbuild from 'esbuild'
 import copy from 'esbuild-plugin-copy'
 
+// Build output from @radio-services/web package
 await esbuild.build({
-  entryPoints: ['src/web/main.ts'],
+  entryPoints: ['packages/web/src/main.ts'],
   bundle: true,
   outfile: 'public/admin/app.js',
   format: 'esm',
@@ -18,7 +19,7 @@ await esbuild.build({
       resolveFrom: 'cwd',
       assets: [
         {
-          from: ['src/web/styles.css'],
+          from: ['packages/web/src/styles.css'],
           to: ['public/admin/app.css'],
         },
         {

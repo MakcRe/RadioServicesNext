@@ -4,15 +4,18 @@ Built-in plugins for `@radio-services/core`. Each plugin is its own
 workspace package so it can be built, typechecked, and versioned
 independently. The discoverer walks this directory at startup.
 
-| Package                                        | Purpose                                                      | Priority |
-|------------------------------------------------|--------------------------------------------------------------|----------|
-| [`playlist`](./playlist/README.md)             | Playlist/upload queue + `/api/source/*` + `/api/playlist`    | 10       |
-| [`archive`](./archive/README.md)               | Hourly MP3 segmenter + `/api/archive/*`                      | 20       |
-| [`listeners`](./listeners/README.md)           | Live-listener bookkeeping + `/api/listeners/*`               | 30       |
-| [`ffmpeg`](./ffmpeg/README.md)                 | Auto-install / version switch + `/api/ffmpeg/*`              | 40       |
+| Package                                        | Purpose                                                      |
+|------------------------------------------------|--------------------------------------------------------------|
+| [`playlist`](./playlist/README.md)             | Playlist/upload queue + `/api/source/*` + `/api/playlist`    |
+| [`archive`](./archive/README.md)               | Hourly MP3 segmenter + `/api/archive/*`                      |
+| [`listeners`](./listeners/README.md)           | Live-listener bookkeeping + `/api/listeners/*`               |
+| [`ffmpeg`](./ffmpeg/README.md)                 | Auto-install / version switch + `/api/ffmpeg/*`              |
 
-Lower priority numbers load first. The playlist plugin registers routes
-that the source view depends on, so it leads.
+Plugins are loaded by the discoverer in the order they appear in
+`manifest.json` (i.e. playlist → archive → listeners → ffmpeg). The
+`Plugin` interface supports an optional `priority` field that lower
+priority values load first, but none of the built-in plugins currently
+set it — the explicit list above is the de-facto load order.
 
 ## Layout
 

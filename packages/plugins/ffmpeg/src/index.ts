@@ -50,11 +50,18 @@ export default function createFFmpegPlugin(): Plugin {
 
       await ffmpegManager.initialize()
 
+      // Get sourceReceiver from context (registered by app.ts before plugins load)
+      const sourceReceiver = ctx.getService<{
+        attachInternalStream: (stream: import('stream').Readable, metadata?: { name?: string }) => void
+        getActiveSession: () => { id: string } | null
+      }>('sourceReceiver')
+
       registerFfmpegRoutes(ctx, {
         ffmpegManager,
         wsHub,
         runtimeState,
         binRoot,
+        sourceReceiver: sourceReceiver ?? undefined,
       })
 
       ctx.registerService('ffmpegManager', ffmpegManager)

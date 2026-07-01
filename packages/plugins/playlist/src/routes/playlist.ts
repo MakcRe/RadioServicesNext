@@ -1,6 +1,8 @@
-import type { PluginContext, RouteOptions } from '@radio-services/shared'
+import type { PluginContext, RouteOptions, FastifyReply } from '@radio-services/shared'
 import type { PlaylistService } from '../services/playlist-service.js'
 import type { UploadedFilesRepo } from '../repos/uploaded-files.repo.js'
+import type { UploadService } from '../services/upload-service.js'
+import { spawn } from 'child_process'
 
 function parsePositiveId(id: string): number {
   if (!/^[1-9][0-9]*$/.test(id)) {
@@ -9,11 +11,35 @@ function parsePositiveId(id: string): number {
   return Number(id)
 }
 
+async function getAudioDuration(filePath: string): Promise<number | null> {
+  return new Promise((resolve) => {
+    const proc = spawn('ffprobe', [
+      '-v', 'error',
+      '-show_entries', 'format=duration',
+      '-of', 'default=noprint_wrappers=1:nokey=1',
+      filePath,
+    ])
+    let output = ''
+    proc.stdout.on('data', (c: Buffer) => (output += c.toString()))
+    proc.on('close', (code) => {
+      if (code === 0) {
+        const parsed = parseFloat(output.trim())
+        resolve(isNaN(parsed) ? null : parsed)
+      } else {
+        resolve(null)
+      }
+    })
+    proc.on('error', () => resolve(null))
+    setTimeout(() => { try { proc.kill() } catch {}; resolve(null) }, 5000)
+  })
+}
+
 export function registerPlaylistRoutes(
   ctx: PluginContext,
   deps: {
     playlistService: PlaylistService
     fileRepo: UploadedFilesRepo
+    uploadService: UploadService
   }
 ): void {
   const routes: RouteOptions[] = [
@@ -95,6 +121,31 @@ export function registerPlaylistRoutes(
         }
         deps.fileRepo.delete(numId)
         return { ok: true }
+      }
+    },
+    {
+      method: 'POST',
+      url: '/api/source/upload',
+      handler: async (request: unknown, reply: FastifyReply) => {
+        const req = request as {
+          file?: () => Promise<{ filename: string; toBuffer: () => Promise<Buffer>; mimetype?: string } | null>
+        }
+        const file = await req.file?.()
+        if (!file) {
+          return reply.status(400).send({ error: 'no file provided' })
+        }
+        const buffer = await file.toBuffer()
+        const originalName = file.filename ?? 'unknown'
+        const result = await deps.uploadService.save({
+          buffer,
+          originalName,
+          getDuration: getAudioDuration,
+        })
+        return {
+          filename: result.filename,
+          originalName: result.originalName,
+          sizeBytes: result.sizeBytes,
+        }
       }
     }
   ]

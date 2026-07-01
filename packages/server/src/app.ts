@@ -3,13 +3,11 @@ import multipart from '@fastify/multipart';
 import websocket from '@fastify/websocket';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { PassThrough } from 'stream';
 import type { RadioConfig } from '@radio-services/shared';
 import { createLogger } from './logger.js';
-import { PluginLoader } from '@radio-services/core';
-import { PluginRegistry } from '@radio-services/core';
-import { PluginContextImpl } from '@radio-services/core';
-import { WsHub } from '@radio-services/core';
-import { initDb } from '@radio-services/core';
+import { PluginLoader, PluginRegistry, PluginContextImpl, WsHub, initDb, Broadcaster, ListenerManager, SourceReceiver } from '@radio-services/core';
+import { registerStreamRoutes } from './routes/stream.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -83,15 +81,63 @@ export async function createApp(deps: CreateAppDeps = {}): Promise<{ app: AnyFas
     pluginContext.registerService('db', db);
   }
 
+  // Create core streaming services and register them immediately so plugins can access them
+  const broadcaster = new Broadcaster({ ringCapacity: 1024 });
+  pluginContext.registerService('broadcaster', broadcaster);
+
+  const sourceReceiver = new SourceReceiver({
+    sourcePassword: config.auth.sourcePassword,
+  });
+  pluginContext.registerService('sourceReceiver', sourceReceiver);
+
   const pluginDirs = [
     join(__dirname, '../../plugins'),
   ];
-  
+
   const loadedPlugins = await loader.discoverAndLoad(pluginDirs);
 
   for (const plugin of loadedPlugins) {
     await plugin.init(pluginContext);
   }
+
+  // Now plugins have registered their services; retrieve listenerManager if available
+  const listenerManager = pluginContext.getService<ListenerManager>('listenerManager');
+  if (listenerManager) {
+    registerStreamRoutes(fastify, { broadcaster, listenerManager });
+  } else {
+    // Fallback: register stream route without listener tracking
+    registerStreamRoutes(fastify, {
+      broadcaster,
+      listenerManager: {
+        connect: () => 0,
+        disconnect: () => {},
+        countCurrent: () => 0,
+        current: () => [],
+        history: () => ({ rows: [], total: 0 }),
+      } as unknown as ListenerManager,
+    });
+  }
+
+  // Register source PUT/POST endpoint
+  await sourceReceiver.register(fastify);
+
+  // Wire SourceReceiver → Broadcaster so incoming audio flows to listeners
+  let activePassthrough: PassThrough | null = null;
+  sourceReceiver.on('session-start', () => {
+    activePassthrough = new PassThrough();
+    broadcaster.pipeFrom(activePassthrough, sourceReceiver.getActiveSession() ?? undefined);
+  });
+  sourceReceiver.on('data', (chunk: Buffer) => {
+    if (activePassthrough) {
+      activePassthrough.write(chunk);
+    }
+  });
+  sourceReceiver.on('session-end', () => {
+    if (activePassthrough) {
+      activePassthrough.end();
+      activePassthrough = null;
+    }
+  });
 
   const pluginRoutes = pluginContext.getRegisteredRoutes();
   for (const route of pluginRoutes) {
@@ -110,6 +156,22 @@ export async function createApp(deps: CreateAppDeps = {}): Promise<{ app: AnyFas
       handler(socket as any, request);
     });
   }
+
+  // Register /api/status — aggregates broadcaster, ffmpeg, and listener info
+  fastify.get('/api/status', async () => {
+    const ffmpegManager = pluginContext.getService<{ getStatus(): { available: boolean; path: string | null; version: string | null } }>('ffmpegManager');
+    return {
+      ffmpeg: ffmpegManager?.getStatus() ?? { available: false, path: null, version: null },
+      broadcaster: {
+        isLive: broadcaster.isLive(),
+        ringBufferSize: broadcaster.ringBufferSize(),
+      },
+      listeners: listenerManager ? {
+        count: listenerManager.countCurrent(),
+        listeners: listenerManager.current(),
+      } : { count: 0, listeners: [] },
+    };
+  });
 
   fastify.get('/health', async () => ({ ok: true }));
 

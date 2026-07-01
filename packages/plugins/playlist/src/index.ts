@@ -38,6 +38,7 @@ export default function createPlaylistPlugin(): Plugin {
       registerPlaylistRoutes(ctx, {
         playlistService,
         fileRepo: uploadedFilesRepo,
+        uploadService,
       })
 
       ctx.registerService('uploadService', uploadService)

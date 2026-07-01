@@ -2,6 +2,8 @@ import type { PluginContext, RouteOptions, FastifyReply } from '@radio-services/
 import { FFmpegManager } from '../services/ffmpeg-manager.js'
 import type { WsHub } from '@radio-services/core'
 import type { FfmpegRuntimeState } from '../services/ffmpeg-state.js'
+import { createReadStream } from 'fs'
+import { join, basename } from 'path'
 
 function relativizePath(absPath: string, binRoot: string): string {
   if (!absPath.startsWith(binRoot)) return absPath
@@ -17,6 +19,10 @@ export function registerFfmpegRoutes(
     wsHub: WsHub
     runtimeState: FfmpegRuntimeState
     binRoot: string
+    sourceReceiver?: {
+      attachInternalStream: (stream: import('stream').Readable, metadata?: { name?: string }) => void
+      getActiveSession: () => { id: string } | null
+    }
   }
 ): void {
   const routes: RouteOptions[] = [
@@ -136,6 +142,60 @@ export function registerFfmpegRoutes(
           available: true,
           message: `已切换到版本 ${version}（实时生效）`,
         }
+      }
+    },
+    {
+      method: 'POST',
+      url: '/api/source/start',
+      handler: async (request: unknown) => {
+        const body = (request as { body?: { type?: string; id?: number } }).body ?? {}
+        const { type = 'file', id } = body
+
+        const ffmpegStatus = deps.ffmpegManager.getStatus()
+        if (!ffmpegStatus.available || !ffmpegStatus.path) {
+          return { success: false, error: 'ffmpeg not available' }
+        }
+
+        if (type === 'file' && id) {
+          // Get the uploaded file path from the playlist service
+          const playlistService = ctx.getService<{ getById?: (id: number) => { filename: string } | null }>('playlistService')
+          if (!playlistService) {
+            return { success: false, error: 'playlist service not available' }
+          }
+
+          const playlistItem = playlistService.getById?.(id)
+          if (!playlistItem) {
+            return { success: false, error: `playlist item ${id} not found` }
+          }
+
+          const uploadDir = ctx.config.playlist.uploadDir
+          const inputFile = join(uploadDir, playlistItem.filename)
+
+          // Use the sourceReceiver if available to push audio to broadcaster
+          const stream = createReadStream(inputFile)
+          const receiver = deps.sourceReceiver
+          if (receiver) {
+            receiver.attachInternalStream(stream, { name: basename(inputFile) })
+            return { success: true, message: 'started streaming file' }
+          }
+
+          return { success: false, error: 'source receiver not available' }
+        }
+
+        // Generic start without file
+        return { success: false, error: 'unsupported source type' }
+      }
+    },
+    {
+      method: 'POST',
+      url: '/api/source/stop',
+      handler: async () => {
+        // Stop the current source session
+        const sourceReceiver = ctx.getService<{ detachInternalStream?: () => void }>('sourceReceiver')
+        if (sourceReceiver) {
+          sourceReceiver.detachInternalStream?.()
+        }
+        return { success: true }
       }
     }
   ]

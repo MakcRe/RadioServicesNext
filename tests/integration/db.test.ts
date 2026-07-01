@@ -2,10 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { initDb } from '../../src/db/sqlite.js'
-import { PlaylistRepo } from '../../src/db/repos/playlist.repo.js'
-import { UploadedFilesRepo } from '../../src/db/repos/uploaded-files.repo.js'
-import { ListenerLogsRepo } from '../../src/db/repos/listener-logs.repo.js'
+import { initDb, PlaylistRepo, UploadedFilesRepo, ListenerLogsRepo } from '@radio-services/core'
 
 let dbPath: string
 let db: Awaited<ReturnType<typeof initDb>>

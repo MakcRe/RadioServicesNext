@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
-import { warnIfDefaultPassword, DEFAULT_SOURCE_PASSWORD } from '../../src/config.js'
-import type { AppConfig } from '../../src/config.js'
+import { warnIfDefaultPassword, DEFAULT_SOURCE_PASSWORD } from '@radio-services/shared'
+import type { RadioConfig } from '@radio-services/shared'
 
-function makeCfg(password: string): AppConfig {
+function makeCfg(password: string): RadioConfig {
   return {
     db: { path: 'x' },
     server: { host: '127.0.0.1', port: 8000 },
@@ -11,6 +11,7 @@ function makeCfg(password: string): AppConfig {
     archive: { directory: 'x', segmentDurationSec: 3600, retentionDays: 7, minFreeSpaceMB: 500 },
     playlist: { uploadDir: 'x', maxFileSizeMB: 500, allowedExtensions: ['.mp3'] },
     logging: { directory: 'x', level: 'info', retentionDays: 30 },
+    stream: { pollIntervalMs: 5000, pollIntervalMaxMs: 30000 },
   }
 }
 

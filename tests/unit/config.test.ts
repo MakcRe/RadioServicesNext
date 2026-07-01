@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, writeFileSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { loadConfig, type AppConfig } from '../../src/config.js'
+import { loadConfig, type RadioConfig } from '@radio-services/shared'
 
 let tempDir: string
 
@@ -28,7 +28,7 @@ archive:
     const cfgPath = join(tempDir, 'config.yaml')
     writeFileSync(cfgPath, yaml)
 
-    const cfg: AppConfig = loadConfig(cfgPath)
+    const cfg: RadioConfig = loadConfig(cfgPath)
     expect(cfg.server.host).toBe('127.0.0.1')
     expect(cfg.server.port).toBe(9000)
     expect(cfg.auth.sourcePassword).toBe('secret123')

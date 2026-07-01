@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { buildDownloadUrl } from '../../src/services/ffmpeg-downloader.js'
+import { buildDownloadUrl } from '@radio-services/plugins/ffmpeg'
 import { createHash } from 'crypto'
 import { mkdir, writeFile, rm } from 'fs/promises'
 import { join, dirname } from 'path'
@@ -24,7 +24,7 @@ describe('verifySha256', () => {
     const expected = sha256Of(data)
     const filePath = await makeTempFile(data)
     try {
-      const { verifySha256 } = await import('../../src/services/ffmpeg-downloader.js')
+      const { verifySha256 } = await import('@radio-services/plugins/ffmpeg')
       await expect(verifySha256(filePath, expected)).resolves.toBeUndefined()
     } finally {
       await rm(dirname(filePath), { recursive: true, force: true })
@@ -38,7 +38,7 @@ describe('verifySha256', () => {
     const upper = lower.toUpperCase()
     const filePath = await makeTempFile(data)
     try {
-      const { verifySha256 } = await import('../../src/services/ffmpeg-downloader.js')
+      const { verifySha256 } = await import('@radio-services/plugins/ffmpeg')
       await expect(verifySha256(filePath, upper)).resolves.toBeUndefined()
     } finally {
       await rm(dirname(filePath), { recursive: true, force: true })
@@ -51,7 +51,7 @@ describe('verifySha256', () => {
     const wrongHash = sha256Of(Buffer.from('totally different content'))
     const filePath = await makeTempFile(data)
     try {
-      const { verifySha256 } = await import('../../src/services/ffmpeg-downloader.js')
+      const { verifySha256 } = await import('@radio-services/plugins/ffmpeg')
       await expect(verifySha256(filePath, wrongHash)).rejects.toThrow()
     } finally {
       await rm(dirname(filePath), { recursive: true, force: true })
@@ -59,14 +59,14 @@ describe('verifySha256', () => {
   })
 
   it('throws when file does not exist', async () => {
-    const { verifySha256 } = await import('../../src/services/ffmpeg-downloader.js')
+    const { verifySha256 } = await import('@radio-services/plugins/ffmpeg')
     await expect(
       verifySha256('/nonexistent/path/archive.tar.xz', 'a'.repeat(64)),
     ).rejects.toThrow()
   })
 
   it('throws when expected hash is not 64 hex characters', async () => {
-    const { verifySha256 } = await import('../../src/services/ffmpeg-downloader.js')
+    const { verifySha256 } = await import('@radio-services/plugins/ffmpeg')
     await expect(verifySha256('/any/path', 'not-a-valid-sha256')).rejects.toThrow(/invalid SHA256 format/i)
   })
 })
@@ -154,7 +154,7 @@ describe('resolveLatestFfmpegVersion', () => {
     const realFetch = globalThis.fetch
     globalThis.fetch = mockFetch(tags) as unknown as typeof fetch
     try {
-      const { resolveLatestFfmpegVersion } = await import('../../src/services/ffmpeg-downloader.js')
+      const { resolveLatestFfmpegVersion } = await import('@radio-services/plugins/ffmpeg')
       const v = await resolveLatestFfmpegVersion('https://example.invalid/tags')
       expect(v).toBe('8.1.1')
     } finally {
@@ -173,7 +173,7 @@ describe('resolveLatestFfmpegVersion', () => {
     const realFetch = globalThis.fetch
     globalThis.fetch = mockFetch(html, 200, 'text/html') as unknown as typeof fetch
     try {
-      const { resolveLatestFfmpegVersion } = await import('../../src/services/ffmpeg-downloader.js')
+      const { resolveLatestFfmpegVersion } = await import('@radio-services/plugins/ffmpeg')
       const v = await resolveLatestFfmpegVersion('https://www.osxexperts.net')
       expect(v).toBe('8.1')
     } finally {
@@ -185,7 +185,7 @@ describe('resolveLatestFfmpegVersion', () => {
     const realFetch = globalThis.fetch
     globalThis.fetch = mockFetch({}, 500) as unknown as typeof fetch
     try {
-      const { resolveLatestFfmpegVersion } = await import('../../src/services/ffmpeg-downloader.js')
+      const { resolveLatestFfmpegVersion } = await import('@radio-services/plugins/ffmpeg')
       expect(await resolveLatestFfmpegVersion('https://example.invalid/tags')).toBeNull()
     } finally {
       globalThis.fetch = realFetch
@@ -196,7 +196,7 @@ describe('resolveLatestFfmpegVersion', () => {
     const realFetch = globalThis.fetch
     globalThis.fetch = vi.fn().mockRejectedValue(new Error('ECONNREFUSED')) as unknown as typeof fetch
     try {
-      const { resolveLatestFfmpegVersion } = await import('../../src/services/ffmpeg-downloader.js')
+      const { resolveLatestFfmpegVersion } = await import('@radio-services/plugins/ffmpeg')
       expect(await resolveLatestFfmpegVersion('https://example.invalid/tags', 1000)).toBeNull()
     } finally {
       globalThis.fetch = realFetch
@@ -207,7 +207,7 @@ describe('resolveLatestFfmpegVersion', () => {
     const realFetch = globalThis.fetch
     globalThis.fetch = mockFetch([{ name: 'latest' }]) as unknown as typeof fetch
     try {
-      const { resolveLatestFfmpegVersion } = await import('../../src/services/ffmpeg-downloader.js')
+      const { resolveLatestFfmpegVersion } = await import('@radio-services/plugins/ffmpeg')
       expect(await resolveLatestFfmpegVersion('https://example.invalid/tags')).toBeNull()
     } finally {
       globalThis.fetch = realFetch
@@ -218,7 +218,7 @@ describe('resolveLatestFfmpegVersion', () => {
     const realFetch = globalThis.fetch
     globalThis.fetch = mockFetch('<html><body>no ffmpeg here</body></html>', 200, 'text/html') as unknown as typeof fetch
     try {
-      const { resolveLatestFfmpegVersion } = await import('../../src/services/ffmpeg-downloader.js')
+      const { resolveLatestFfmpegVersion } = await import('@radio-services/plugins/ffmpeg')
       expect(await resolveLatestFfmpegVersion('https://www.osxexperts.net')).toBeNull()
     } finally {
       globalThis.fetch = realFetch
@@ -250,7 +250,7 @@ describe('listLatestRemoteVersions', () => {
     const realFetch = globalThis.fetch
     globalThis.fetch = mockFetch(tags) as unknown as typeof fetch
     try {
-      const { listLatestRemoteVersions } = await import('../../src/services/ffmpeg-downloader.js')
+      const { listLatestRemoteVersions } = await import('@radio-services/plugins/ffmpeg')
       const v = await listLatestRemoteVersions('https://example.invalid/tags', 3)
       // Top 3 distinct major.minor are 9.0, 8.1, 7.1 — each entry keeps
       // its highest patch so the UI can offer the freshest download.
@@ -271,7 +271,7 @@ describe('listLatestRemoteVersions', () => {
     const realFetch = globalThis.fetch
     globalThis.fetch = mockFetch(tags) as unknown as typeof fetch
     try {
-      const { listLatestRemoteVersions } = await import('../../src/services/ffmpeg-downloader.js')
+      const { listLatestRemoteVersions } = await import('@radio-services/plugins/ffmpeg')
       const v = await listLatestRemoteVersions('https://example.invalid/tags', 8)
       expect(v).toEqual(['8.0.3', '7.1.5'])
     } finally {
@@ -283,7 +283,7 @@ describe('listLatestRemoteVersions', () => {
     const realFetch = globalThis.fetch
     globalThis.fetch = vi.fn().mockRejectedValue(new Error('network down'))
     try {
-      const { listLatestRemoteVersions } = await import('../../src/services/ffmpeg-downloader.js')
+      const { listLatestRemoteVersions } = await import('@radio-services/plugins/ffmpeg')
       expect(await listLatestRemoteVersions('https://example.invalid/tags')).toEqual([])
     } finally {
       globalThis.fetch = realFetch

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { RingBuffer } from '../../src/services/ring-buffer.js'
+import { RingBuffer } from '@radio-services/core'
 
 describe('RingBuffer', () => {
   it('initially empty', () => {

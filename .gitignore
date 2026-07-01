@@ -13,3 +13,5 @@ config/config.yaml
 .DS_Store
 coverage/
 .vitest/
+packages/*/dist/
+packages/*/.turbo/

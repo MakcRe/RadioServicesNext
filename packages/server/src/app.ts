@@ -13,20 +13,31 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 type AnyFastifyInstance = ReturnType<typeof Fastify>;
 
-export interface BuildAppDeps {
+export interface CreateAppDeps {
   config?: RadioConfig;
+  configPath?: string;
+  ffmpegPathOverride?: string;
 }
 
-export async function createApp(deps: BuildAppDeps = {}): Promise<AnyFastifyInstance> {
-  const config = deps.config ?? {
-    server: { host: '0.0.0.0', port: 8000 },
-    auth: { sourcePassword: 'hackme' },
-    ffmpeg: { version: '7.1', sourceUrl: 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest' },
-    archive: { directory: 'bin/archive', segmentDurationSec: 3600, retentionDays: 7, minFreeSpaceMB: 500 },
-    playlist: { uploadDir: 'bin/uploads', maxFileSizeMB: 500, allowedExtensions: ['.mp3'] },
-    logging: { directory: 'logs', level: 'info', retentionDays: 30 },
-    stream: { pollIntervalMs: 5000, pollIntervalMaxMs: 30000 },
-  };
+export async function createApp(deps: CreateAppDeps = {}): Promise<{ app: AnyFastifyInstance }> {
+  let config: RadioConfig;
+  
+  if (deps.config) {
+    config = deps.config;
+  } else if (deps.configPath) {
+    const { loadConfig } = await import('@radio-services/shared');
+    config = loadConfig(deps.configPath);
+  } else {
+    config = {
+      server: { host: '0.0.0.0', port: 8000 },
+      auth: { sourcePassword: 'hackme' },
+      ffmpeg: { version: '7.1', sourceUrl: 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest' },
+      archive: { directory: 'bin/archive', segmentDurationSec: 3600, retentionDays: 7, minFreeSpaceMB: 500 },
+      playlist: { uploadDir: 'bin/uploads', maxFileSizeMB: 500, allowedExtensions: ['.mp3'] },
+      logging: { directory: 'logs', level: 'info', retentionDays: 30 },
+      stream: { pollIntervalMs: 5000, pollIntervalMaxMs: 30000 },
+    };
+  }
 
   const logger = createLogger(config.logging);
   
@@ -71,5 +82,5 @@ export async function createApp(deps: BuildAppDeps = {}): Promise<AnyFastifyInst
 
   fastify.get('/health', async () => ({ ok: true }));
 
-  return fastify;
+  return { app: fastify };
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { Readable } from 'stream'
-import { Broadcaster } from '../../src/services/broadcaster.js'
+import { Broadcaster } from '@radio-services/core'
 
 describe('Broadcaster', () => {
   it('writes data to ring buffer and listeners', async () => {

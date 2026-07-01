@@ -1,8 +1,20 @@
 import type { Plugin, PluginContext } from '@radio-services/shared'
-import { FFmpegManager } from './services/ffmpeg-manager.js'
+import { FFmpegManager, normalizeVersion } from './services/ffmpeg-manager.js'
 import type { FfmpegRuntimeState } from './services/ffmpeg-state.js'
 import type { WsHub } from '@radio-services/core'
 import { registerFfmpegRoutes } from './routes/ffmpeg.js'
+import {
+  downloadFfmpeg,
+  buildDownloadUrl,
+  resolveLatestFfmpegVersion,
+  listLatestRemoteVersions,
+  verifySha256,
+  type DownloadState,
+  type ProgressCallback,
+} from './services/ffmpeg-downloader.js'
+
+export { FFmpegManager, buildDownloadUrl, downloadFfmpeg, resolveLatestFfmpegVersion, listLatestRemoteVersions, verifySha256, normalizeVersion }
+export type { DownloadState, ProgressCallback }
 
 export default function createFFmpegPlugin(): Plugin {
   let ffmpegManager: FFmpegManager

@@ -6,15 +6,7 @@ import { join, dirname } from 'path'
 import { pipeline } from 'stream/promises'
 import { Readable } from 'stream'
 import { createHash } from 'crypto'
-
-interface FfmpegConfig {
-  version: string
-  sourceUrl: string
-}
-
-interface AppConfig {
-  ffmpeg: FfmpegConfig
-}
+import type { RadioConfig } from '@radio-services/shared'
 
 export type DownloadState =
   | { state: 'idle' }
@@ -252,7 +244,7 @@ async function findBinary(startDir: string, binary: string): Promise<string> {
 }
 
 export async function downloadFfmpeg(
-  config: AppConfig,
+  config: RadioConfig,
   binRoot: string = 'bin/ffmpeg',
   onProgress: ProgressCallback = () => {},
   requestedVersion?: string,

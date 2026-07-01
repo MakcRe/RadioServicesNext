@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, existsSync, writeFileSync, mkdirSync, chmodSync } 
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { request as httpRequest } from 'http'
-import { buildApp } from '../../src/app.js'
+import { createApp } from '@radio-services/server'
 import type { FastifyInstance } from 'fastify'
 import request from 'supertest'
 import { silentMp3Frame } from '../helpers/mock-source.js'
@@ -88,7 +88,7 @@ beforeAll(async () => {
 
   const configPath = createTestConfig()
   ffmpegBin = fakeFfmpeg()
-  const { app: builtApp } = await buildApp(configPath, { ffmpegPathOverride: ffmpegBin })
+  const { app: builtApp } = await createApp({ ffmpegBin })
   app = builtApp
   await app.listen({ port: 0, host: '127.0.0.1' })
 })

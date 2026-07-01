@@ -6,6 +6,8 @@ import { PlaylistRepo } from './repos/playlist.repo.js'
 import { UploadedFilesRepo } from './repos/uploaded-files.repo.js'
 import { registerPlaylistRoutes } from './routes/playlist.js'
 
+export { PlaylistService, UploadService }
+
 export default function createPlaylistPlugin(): Plugin {
   let playlistService: PlaylistService
   let uploadService: UploadService

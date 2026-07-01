@@ -2,6 +2,8 @@ import type { Plugin, PluginContext } from '@radio-services/shared'
 import { Archiver } from './services/archiver.js'
 import { registerArchiveRoutes } from './routes/archive.js'
 
+export { Archiver }
+
 export default function createArchivePlugin(): Plugin {
   let archiver: Archiver
   let context: PluginContext

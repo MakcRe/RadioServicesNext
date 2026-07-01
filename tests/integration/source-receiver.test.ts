@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import Fastify from 'fastify'
 import request from 'supertest'
-import { SourceReceiver, SourceSession } from '../../src/services/source-receiver.js'
+import { SourceReceiver, SourceSession } from '@radio-services/core'
 
 let app: ReturnType<typeof Fastify>
 let receiver: SourceReceiver

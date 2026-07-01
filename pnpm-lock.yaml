@@ -69,6 +69,10 @@ importers:
       '@radio-services/shared':
         specifier: workspace:*
         version: link:../../shared
+    devDependencies:
+      '@types/ua-parser-js':
+        specifier: ^0.7.39
+        version: 0.7.39
 
   packages/plugins/playlist:
     dependencies:

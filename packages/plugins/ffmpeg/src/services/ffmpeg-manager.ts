@@ -10,15 +10,7 @@ import {
 } from './ffmpeg-downloader.js'
 import type { FfmpegRuntimeState } from './ffmpeg-state.js'
 import type pino from 'pino'
-
-interface FfmpegConfig {
-  version: string
-  sourceUrl: string
-}
-
-interface AppConfig {
-  ffmpeg: FfmpegConfig
-}
+import type { RadioConfig } from '@radio-services/shared'
 
 export type FFmpegSource = 'bundled' | 'system' | 'override' | 'missing'
 
@@ -213,8 +205,14 @@ export class FFmpegManager extends EventEmitter {
     const targetVersion = version ?? this.opts.version
     this.downloading = true
     try {
-      const config: AppConfig = {
+      const config: RadioConfig = {
+        server: { host: 'localhost', port: 8000 },
+        auth: { sourcePassword: '' },
         ffmpeg: { version: targetVersion, sourceUrl: this.opts.downloadUrl },
+        archive: { directory: '', segmentDurationSec: 3600, retentionDays: 7, minFreeSpaceMB: 500 },
+        playlist: { uploadDir: '', maxFileSizeMB: 500, allowedExtensions: [] },
+        logging: { directory: '', level: 'info', retentionDays: 30 },
+        stream: { pollIntervalMs: 5000, pollIntervalMaxMs: 30000 },
       }
       const result = await downloadFfmpeg(
         config,

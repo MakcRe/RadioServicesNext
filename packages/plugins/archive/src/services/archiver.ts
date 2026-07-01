@@ -22,7 +22,7 @@ export class Archiver {
     if (this.proc) throw new Error('archiver already running')
     const ffmpegPath = this.opts.getFfmpegPath()
     if (!ffmpegPath) {
-      throw new Error('ffmpeg not available — install a version or pick one from the admin UI')
+      throw new Error('ffmpeg not available')
     }
     await mkdir(this.opts.archiveDir, { recursive: true })
 
@@ -43,14 +43,10 @@ export class Archiver {
     this.proc = spawn(ffmpegPath, args, { cwd: this.opts.archiveDir })
 
     sourceStream.pipe(this.proc.stdin!)
-    this.proc.stdin!.on('error', () => {
-      // ignore EPIPE
-    })
+    this.proc.stdin!.on('error', () => {})
 
     if (this.proc.stderr) {
-      this.proc.stderr.on('data', () => {
-        // consume stderr to prevent backpressure
-      })
+      this.proc.stderr.on('data', () => {})
     }
 
     this.cleanupTimer = setInterval(() => {

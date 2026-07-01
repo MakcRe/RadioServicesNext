@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { buildApp } from '../../src/app.js'
+import { createApp } from '@radio-services/server'
 import type { FastifyInstance } from 'fastify'
 import request from 'supertest'
 
@@ -61,7 +61,7 @@ stream: { pollIntervalMs: 5000, pollIntervalMaxMs: 30000 }
 db: { path: "${join(tempDir, 't.db')}" }
 `,
   )
-  const built = await buildApp(configPath, { binRoot })
+  const built = await createApp({ configPath })
   app = built.app
   await app.listen({ port: 0, host: '127.0.0.1' })
 })

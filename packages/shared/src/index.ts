@@ -1,7 +1,22 @@
 // Types
-export * from './types/config.js';
+export type {
+  RadioConfig,
+  ServerConfig,
+  AuthConfig,
+  FfmpegConfig,
+  ArchiveConfig,
+  PlaylistConfig,
+  LoggingConfig,
+  StreamConfig,
+} from './types/config.js';
 export * from './types/api.js';
 export * from './types/stream.js';
+// Config functions
+export {
+  DEFAULT_SOURCE_PASSWORD,
+  loadConfig,
+  warnIfDefaultPassword,
+} from './config-func.js';
 
 // Constants
 export * from './constants/index.js';

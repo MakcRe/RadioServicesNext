@@ -1,11 +1,10 @@
 import * as esbuild from 'esbuild'
 import copy from 'esbuild-plugin-copy'
 
-// Build output from @radio-services/web package
 await esbuild.build({
-  entryPoints: ['packages/web/src/main.ts'],
+  entryPoints: ['src/main.ts'],
   bundle: true,
-  outfile: 'public/admin/app.js',
+  outfile: 'dist/app.js',
   format: 'esm',
   platform: 'browser',
   target: ['es2020'],
@@ -19,12 +18,8 @@ await esbuild.build({
       resolveFrom: 'cwd',
       assets: [
         {
-          from: ['packages/web/src/styles.css'],
-          to: ['public/admin/app.css'],
-        },
-        {
-          from: ['public/admin/index.html'],
-          to: ['public/admin/index.html'],
+          from: ['src/styles.css'],
+          to: ['dist/app.css'],
         },
       ],
     }),

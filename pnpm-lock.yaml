@@ -79,6 +79,89 @@ importers:
         specifier: ^2.0.5
         version: 2.1.9(@types/node@20.19.43)
 
+  packages/core:
+    dependencies:
+      '@radio-services/shared':
+        specifier: file:../shared
+        version: link:../shared
+      better-sqlite3:
+        specifier: ^11.3.0
+        version: 11.10.0
+      ua-parser-js:
+        specifier: ^1.0.39
+        version: 1.0.41
+    devDependencies:
+      '@types/better-sqlite3':
+        specifier: ^7.6.11
+        version: 7.6.13
+      '@types/node':
+        specifier: ^20.16.0
+        version: 20.19.43
+      '@types/ua-parser-js':
+        specifier: ^0.7.39
+        version: 0.7.39
+
+  packages/server:
+    dependencies:
+      '@fastify/multipart':
+        specifier: ^8.3.0
+        version: 8.3.1
+      '@fastify/static':
+        specifier: ^7.0.0
+        version: 7.0.4
+      '@fastify/websocket':
+        specifier: ^10.0.0
+        version: 10.0.1
+      '@radio-services/core':
+        specifier: file:../core
+        version: link:../core
+      '@radio-services/shared':
+        specifier: file:../shared
+        version: link:../shared
+      fastify:
+        specifier: ^4.28.0
+        version: 4.29.1
+      pino:
+        specifier: ^9.4.0
+        version: 9.14.0
+      pino-roll:
+        specifier: ^2.0.0
+        version: 2.2.0
+    devDependencies:
+      '@types/node':
+        specifier: ^20.16.0
+        version: 20.19.43
+      '@types/supertest':
+        specifier: ^6.0.2
+        version: 6.0.3
+      supertest:
+        specifier: ^7.0.0
+        version: 7.2.2
+      tsx:
+        specifier: ^4.19.0
+        version: 4.22.4
+      typescript:
+        specifier: ^5.5.4
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.5
+        version: 2.1.9(@types/node@20.19.43)
+
+  packages/shared: {}
+
+  packages/web:
+    dependencies:
+      '@radio-services/shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      esbuild:
+        specifier: ^0.23.0
+        version: 0.23.1
+      esbuild-plugin-copy:
+        specifier: ^2.1.1
+        version: 2.1.1(esbuild@0.23.1)
+
 packages:
 
   '@esbuild/aix-ppc64@0.21.5':
@@ -757,6 +840,9 @@ packages:
 
   '@types/supertest@6.0.3':
     resolution: {integrity: sha512-8WzXq62EXFhJ7QsH3Ocb/iKQ/Ty9ZVWnVzoTKc9tyyFRRF3a74Tk2+TLFgaFFw364Ere+npzHKEJ6ga2LzIL7w==}
+
+  '@types/ua-parser-js@0.7.39':
+    resolution: {integrity: sha512-P/oDfpofrdtF5xw433SPALpdSchtJmY7nsJItf8h3KXqOslkbySh8zq4dSWXH2oTjRvJ5PczVEoCZPow6GicLg==}
 
   '@types/ws@8.18.1':
     resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
@@ -2175,6 +2261,8 @@ snapshots:
     dependencies:
       '@types/methods': 1.1.4
       '@types/superagent': 8.1.10
+
+  '@types/ua-parser-js@0.7.39': {}
 
   '@types/ws@8.18.1':
     dependencies:

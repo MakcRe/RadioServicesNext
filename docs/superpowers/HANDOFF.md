@@ -138,6 +138,32 @@ v1 → v1.3 的迭代成果都已迁移进新包，原始问题修复点见 git 
 
 `feat(ffmpeg): version selector`（`abd5b9e`）等 9 个 commits，实现版本持久化、运行时状态、远程版本列表、UI 版本选择卡片。代码位于 `packages/plugins/ffmpeg/src/services/`。
 
+## 已知差距（monorepo 后未实现 / 回归）
+
+本轮重构 + 修复把代码搬进了新结构、让 typecheck / dev 模式跑起来，但**没全部恢复 v1 → v1.1 已交付的功能**。逐项盘点见 `docs/superpowers/BACKLOG.md`，简要摘要：
+
+### P0（阻塞管理后台与下载 UX）
+
+1. **`/admin` 静态资源未挂载**：`packages/server/src/app.ts` 没装 `@fastify/static`，管理后台浏览器打不开。`packages/web/dist/` 也没脚本 copy 到 `public/admin/`。
+2. **`/api/ffmpeg/download/status` 不是 SSE**：handler 只返回 `{state:'idle'}` JSON，但前端用 `EventSource()` 订阅，下载进度条不动。这是 v1.1 HANDOFF §B7-14 写过要修的 bug，没有真正修。
+
+### P1（v1.1 已修过、monorepo 化后回归）
+
+3. **`plugin.start()` / `stop()` 从未调用**：`app.ts` 只调 init，`server.ts` shutdown 不调 stop。破坏插件契约语义，archive / ffmpeg 子进程有句柄泄漏风险。
+4. **`/api/archive/:filename` 不支持 HTTP Range**：用 `await readFile()` 整文件读内存，handler 没读 `Range` 请求头，`<audio>` 拖动进度条失败。
+5. **`/api/listeners/history` 用 `Number()` 解析**：v1.1 commit `18df09c` 已经替换为 `parsePositiveId()`，monorepo 化时 playlist 端修了，listeners 端漏改。
+6. **`/api/source/stop` 未触发 `endAll()`**：`broadcaster.endAll()` 已实现但**全工程无任何调用方**。v1.1 commit `8fe6d61` "source-stop calls endAll" 修复丢失。
+
+### P2（设计规格有、monorepo 没迁移）
+
+7. **`/api/playlist/loop` 端点缺失**：v1 设计规格 §3.7 要求 `POST /api/playlist/loop { enabled }`，monorepo 后 playlist plugin 没注册。
+8. **`PlaylistService.nextSong()` / `popFirst()` 死代码**：设计成循环推流作业者，但全工程无调用方。
+9. **WS 推送无人调用**：`PluginContext.registerWsHandler()` 没人调，`/ws` 实际连不上，前端 `wsClient` 超时。
+10. **ffmpeg 路由重复**：`/api/ffmpeg/upgrade` 与 `/api/ffmpeg/download` 行为重复，应合并。
+11. **`public/index.html` 落地页无法走 8000 访问**：与 #1 同一根因 —— server 不 serve `public/`。
+
+详细修复建议、关联代码位置、测试覆盖缺口表，**见 `docs/superpowers/BACKLOG.md`**。该文档**应作为下一个会话的首要工作内容**。
+
 ## 测试 / 质量
 
 | 指标 | 数值 |
@@ -148,16 +174,19 @@ v1 → v1.3 的迭代成果都已迁移进新包，原始问题修复点见 git 
 | 构建 | `pnpm -r build` 8 个包全部通过 |
 | 启动 | `pnpm dev:all` server + web 并行运行 |
 
+> ⚠️ **本表只反映 monorepo 化是否"至少跑得起来"**，不代表功能完整。功能差距详见上节及 `BACKLOG.md`。
+
 ## 跨会话交接建议
 
 新接手时建议从以下顺序入手：
 
 1. 根 `README.md` —— 了解 monorepo 布局、HTTP surface、插件系统
-2. `docs/superpowers/specs/2026-07-01-monorepo-design.md` —— 包间契约的源头
-3. `packages/shared/README.md` —— 类型、配置、插件接口
-4. `packages/core/README.md` —— 服务、SQLite、插件运行时
-5. `packages/plugins/README.md` —— 内置插件索引 + 新增插件流程
-6. `vitest.config.ts` —— 顶层测试如何解析 `@radio-services/*`
+2. `docs/superpowers/BACKLOG.md` —— **首要**：当前已知功能差距清单
+3. `docs/superpowers/specs/2026-07-01-monorepo-design.md` —— 包间契约的源头
+4. `packages/shared/README.md` —— 类型、配置、插件接口
+5. `packages/core/README.md` —— 服务、SQLite、插件运行时
+6. `packages/plugins/README.md` —— 内置插件索引 + 新增插件流程
+7. `vitest.config.ts` —— 顶层测试如何解析 `@radio-services/*`
 
 ## 当前会话之前的对话 ID
 

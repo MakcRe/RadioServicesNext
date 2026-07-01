@@ -1,5 +1,7 @@
 export const DEFAULT_SOURCE_PASSWORD = 'hackme'
 
+import { readFileSync, existsSync } from 'fs'
+import yaml from 'js-yaml'
 import type {
   RadioConfig,
   ServerConfig,
@@ -83,11 +85,9 @@ function applyEnvOverrides(cfg: RadioConfig): RadioConfig {
 }
 
 export function loadConfig(path: string): RadioConfig {
-  const { readFileSync, existsSync } = require('fs')
   if (!existsSync(path)) {
     throw new Error(`config file not found: ${path}`)
   }
-  const yaml = require('js-yaml')
   const raw = readFileSync(path, 'utf8')
   const parsed = (yaml.load(raw) as any) ?? {}
   const merged = deepMerge(DEFAULTS, parsed) as RadioConfig

@@ -10,9 +10,12 @@
   },
   "dependencies": {
     "@radio-services/shared": "workspace:*",
-    "@radio-services/core": "workspace:*"
+    "@radio-services/core": "workspace:*",
+    "ua-parser-js": "^1.0.39",
+    "better-sqlite3": "^11.3.0"
   },
   "devDependencies": {
-    "@types/ua-parser-js": "^0.7.39"
+    "@types/ua-parser-js": "^0.7.39",
+    "@types/better-sqlite3": "^7.6.11"
   }
 }

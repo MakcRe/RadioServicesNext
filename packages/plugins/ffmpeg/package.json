@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@radio-services/shared": "workspace:*",
-    "@radio-services/core": "workspace:*"
+    "@radio-services/core": "workspace:*",
+    "keyv": "^4.5.4",
+    "keyv-file": "^0.3.1"
   }
 }

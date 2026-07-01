@@ -1,5 +1,6 @@
 {
   "name": "listeners",
   "version": "0.1.0",
-  "entry": "dist/index.js"
+  "entry": "dist/index.js",
+  "source": "src/index.ts"
 }

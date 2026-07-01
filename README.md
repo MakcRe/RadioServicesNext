@@ -1,76 +1,106 @@
-# radioServices
+# radioServices / 无线电服务
 
-一个用 Node.js + TypeScript 实现的本地广播电台服务器。通过 ffmpeg 命令行或浏览器界面上传音频，实时推流给听众，并自动按小时切片存档。
+A self-hosted Icecast-style radio server written in Node.js + TypeScript, organized as a pnpm monorepo.
 
----
+一个使用 Node.js + TypeScript 实现的本地广播电台服务器，项目采用 pnpm monorepo 架构。
 
-## 特性
-
-- **零配置启动**：自动检测或下载 ffmpeg，无需手动安装
-- **双入口推流**：命令行 ffmpeg / Web 界面上传均支持
-- **实时收听**：`/stream` 和 `/live.mp3` 双 URL，浏览器和 VLC/MPV 均可播放
-- **自动存档**：持续推流时按整点切片为 MP3，支持回放最近 N 天
-- **管理界面**：状态面板、歌单管理、听众日志、ffmpeg 下载进度
-- **跨平台**：支持 macOS / Linux / Windows
+[English](#english) · [中文](#中文)
 
 ---
 
-## 快速上手
+<a id="english"></a>
 
-### 1. 安装依赖
+## English
+
+### Highlights
+
+- **Zero-config bootstrap** — auto-detects or downloads a pinned ffmpeg build on first run.
+- **Dual ingest paths** — accept pushes from ffmpeg/VLC over HTTP, or upload from the browser.
+- **Live listeners** — `/stream` and `/live.mp3` are compatible with any Icecast client.
+- **Hourly archive** — long-lived pushes are auto-segmented into hour-long MP3 slices.
+- **Admin UI** — status dashboard, playlist manager, listener log, ffmpeg download progress.
+- **Pluggable backend** — server features live in `@radio-services/plugins/*` and are discovered at boot.
+
+### Repository layout
+
+```
+radioServices/
+├── packages/
+│   ├── shared/          # @radio-services/shared      — types, config, interfaces
+│   ├── core/            # @radio-services/core        — services, DB, plugin system
+│   ├── server/          # @radio-services/server      — Fastify HTTP/WS server
+│   ├── web/             # @radio-services/web         — browser admin UI bundle
+│   └── plugins/
+│       ├── playlist/    # @radio-services/plugin-playlist
+│       ├── archive/     # @radio-services/plugin-archive
+│       ├── listeners/   # @radio-services/plugin-listeners
+│       └── ffmpeg/      # @radio-services/plugin-ffmpeg
+├── tests/               # workspace-root tests (vitest)
+├── bin/                 # runtime data: ffmpeg, archive, uploads
+├── config/              # config.example.yaml template
+├── docs/                # design specs, plans, references
+├── pnpm-workspace.yaml
+├── tsconfig.base.json
+└── README.md (this file)
+```
+
+### Architecture
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                   radioServices (Node.js)                    │
+│                                                              │
+│  ┌──────────┐     ┌────────────────┐     ┌──────────────┐   │
+│  │ ffmpeg / │────▶│  Source        │     │  Listener    │◀──┼─── Browser / VLC
+│  │ browser  │ PUT │  Receiver      │◀───▶│  Broadcaster │──▶│── Browser / VLC
+│  └──────────┘     └───────┬────────┘     └──────────────┘   │
+│       │                   │                                 │
+│       │           ┌───────▼────────┐                        │
+│       │           │   Archiver     │ (ffmpeg-plugin)        │
+│       │           └───────┬────────┘                        │
+│       │                   │                                 │
+│       │           ┌───────▼────────┐                        │
+│       │           │ bin/archive/   │                        │
+│       │           │ YYYY-MM-DD-HH.mp3                       │
+│       │           └────────────────┘                        │
+│  ┌────────────────────────────────────────────────────────┐ │
+│  │  SQLite  (playlist / config / listener logs)           │ │
+│  └────────────────────────────────────────────────────────┘ │
+│  ┌────────────────────────────────────────────────────────┐ │
+│  │  Admin Web UI  (bundled by @radio-services/web)        │ │
+│  └────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────┘
+                Plugin system (@radio-services/core)
+                Plugins load: playlist, archive, listeners, ffmpeg
+```
+
+### Quick start
 
 ```bash
+# 1. Install (pnpm 9+ required)
 pnpm install
-```
 
-### 2. 初始化配置
-
-```bash
+# 2. Initialise config
 cp config/config.example.yaml config/config.yaml
-```
 
-根据需要编辑 `config/config.yaml`，默认配置如下：
+# 3. Build shared & core first (their `dist/` is consumed by everything else)
+pnpm --filter @radio-services/shared build
+pnpm --filter @radio-services/core   build
 
-```yaml
-server:
-  host: "0.0.0.0"
-  port: 8000
-
-auth:
-  sourcePassword: "hackme"   # 推流密码
-
-ffmpeg:
-  version: "7.1"
-  sourceUrl: "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest"
-
-archive:
-  directory: "bin/archive"
-  segmentDurationSec: 3600   # 每小时一片
-  retentionDays: 7           # 保留 7 天
-
-playlist:
-  uploadDir: "bin/uploads"
-  maxFileSizeMB: 500
-  allowedExtensions:
-    - ".mp3"
-    - ".m4a"
-    - ".aac"
-    - ".ogg"
-    - ".wav"
-    - ".flac"
-```
-
-### 3. 启动服务
-
-```bash
+# 4. Run dev servers (server on :8000, web with esbuild --watch)
 pnpm dev
+# or run everything in parallel
+pnpm dev:all
 ```
 
-首次启动时，如果项目内没有 ffmpeg，会自动从 GitHub 下载（预计 30-60 秒）。Web 界面会在下载完成后刷新状态。
+On first run, `bin/ffmpeg/current/` is empty. The `ffmpeg` plugin checks the
+filesystem, falls back to GitHub, downloads a release, verifies SHA-256, and
+extracts the binary in the background. The browser UI subscribes to that
+progress over WebSocket and refreshes the dashboard when it finishes.
 
-### 4. 推流音频
+### Push audio
 
-**方式一：命令行推流（使用项目内 ffmpeg）**
+**Command-line (using the bundled ffmpeg)**
 
 ```bash
 ./bin/ffmpeg/current/ffmpeg -re -i your_audio.mp3 \
@@ -78,237 +108,302 @@ pnpm dev
   http://localhost:8000/source
 ```
 
-**方式二：Web 界面上传**
+**Web admin**
 
-浏览器打开 http://localhost:8000/admin，进入「推流」标签页，拖拽上传音频文件，点击「立即推流」。
+Visit `http://localhost:8000/admin`, open the **Source** tab, drag-drop a
+file, then click **Push now**.
 
-> 推流密码默认为 `hackme`，可在 `config.yaml` 中修改 `auth.sourcePassword`。
+The default source password is `hackme`. Override it via
+`auth.sourcePassword` in `config/config.yaml` or the `RADIO_SOURCE_PASSWORD`
+environment variable.
 
-### 5. 收听
+### Listen
 
-- 浏览器：http://localhost:8000/stream 或 http://localhost:8000/live.mp3
-- VLC：`vlc http://localhost:8000/live.mp3`
-- 回放存档：http://localhost:8000/admin，进入「回放」标签页
+- Browser: <http://localhost:8000/stream> or <http://localhost:8000/live.mp3>
+- VLC: `vlc http://localhost:8000/live.mp3`
+- Archive: visit `/admin` → **Archive** tab.
+
+### Commands
+
+| Command           | What it does                                              |
+|-------------------|-----------------------------------------------------------|
+| `pnpm install`    | Install all workspace dependencies                        |
+| `pnpm dev`        | Run server only (with `tsx watch`)                        |
+| `pnpm dev:all`    | Run server and web bundler in parallel                    |
+| `pnpm build`      | TypeScript build for every package (`tsc`)                |
+| `pnpm start`      | Start the prebuilt server (`dist/server.js`)              |
+| `pnpm test`       | Run all tests once (vitest)                               |
+| `pnpm typecheck`  | `tsc --noEmit` across every package                       |
+| `pnpm clean`      | Remove every package's `dist/`                            |
+
+### Configuration
+
+All runtime configuration lives in `config/config.yaml`:
+
+```yaml
+server:
+  host: "0.0.0.0"
+  port: 8000
+
+auth:
+  sourcePassword: "hackme"
+
+ffmpeg:
+  version: "7.1"
+  sourceUrl: "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest"
+
+archive:
+  directory: "bin/archive"
+  segmentDurationSec: 3600
+  retentionDays: 7
+
+playlist:
+  uploadDir: "bin/uploads"
+  maxFileSizeMB: 500
+  allowedExtensions: [".mp3", ".m4a", ".aac", ".ogg", ".wav", ".flac"]
+```
+
+Selected environment overrides:
+
+- `RADIO_PORT` — override `server.port`
+- `RADIO_HOST` — override `server.host`
+- `RADIO_SOURCE_PASSWORD` — override `auth.sourcePassword`
+- `RADIO_DB_PATH` — override `db.path`
+
+### Plugin system
+
+Each feature is a workspace package under `packages/plugins/*` with its own
+`manifest.json`. The discoverer walks the plugins directory at startup, the
+loader imports each `dist/index.js` (or `src/index.ts` under tsx in dev) and
+the registry exposes the resulting `Plugin` objects.
+
+A plugin implements:
+
+```ts
+export default function createMyPlugin(): Plugin {
+  return {
+    name: 'my-plugin',
+    version: '0.1.0',
+    init(ctx) { /* register routes, services */ },
+    start() { /* async setup */ },
+    stop() { /* async teardown */ },
+  }
+}
+```
+
+See [`packages/core/src/plugin-system`](packages/core/src/plugin-system) for
+the discoverer/loader/registry contracts and
+[`packages/plugins`](packages/plugins) for working examples.
+
+### Troubleshooting
+
+| Symptom                              | Fix                                                                                       |
+|--------------------------------------|-------------------------------------------------------------------------------------------|
+| macOS Gatekeeper blocks bundled ffmpeg | System Settings → Privacy & Security → "Open Anyway"                                    |
+| ffmpeg download fails                | Check outbound access to `github.com/BtbN`, or drop a binary into `bin/ffmpeg/current/`  |
+| Port 8000 already in use             | Change `server.port` in `config.yaml`                                                     |
+| Stream returns 401                   | Password mismatch — `auth.sourcePassword` must match the value sent by the source client |
+| Silent listen                        | Confirm a push is active and the listener URL is correct                                  |
+
+### License
+
+MIT
 
 ---
 
-## 架构图
+<a id="中文"></a>
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│                    radioServices (Node.js)                    │
-│                                                              │
-│  ┌──────────┐     ┌────────────────┐     ┌──────────────┐   │
-│  │ ffmpeg   │────▶│  Source        │     │   Listener   │◀──┼─── 浏览器 / VLC
-│  │ (推流端) │ PUT │  Receiver      │◀───▶│   Broadcaster│──▶│── 浏览器 / VLC
-│  └──────────┘     └───────┬────────┘     └──────────────┘   │
-│       │                   │                       │         │
-│       │           ┌───────▼────────┐              │         │
-│       │           │   Archiver     │              │         │
-│       │           │ (ffmpeg切片)   │              │         │
-│       │           └───────┬────────┘              │         │
-│       │                   │                       │         │
-│       │           ┌───────▼────────┐              │         │
-│       │           │ bin/archive/   │              │         │
-│       │           │ YYYY-MM-DD-HH.mp3            │         │
-│       │           └────────────────┘              │         │
-│  ┌────▼────────────────────────────────────────────▼─────┐  │
-│  │                SQLite (歌单/配置/日志)                  │  │
-│  └───────────────────────────────────────────────────────┘  │
-│                                                              │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │       Admin Web UI (HTML + TS, 浏览器内可视化)         │  │
-│  │   状态页 / 推流控制 / 歌单 / 听众日志                    │  │
-│  └───────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────────┘
-```
+## 中文
 
-三条核心数据路径：
+### 特性
 
-- **推流路径**：ffmpeg PUT /source → SourceReceiver → Broadcaster → Archiver
-- **实时收听**：浏览器/VLC GET /stream → Broadcaster → 实时音频流
-- **回放路径**：GET /archive/YYYY-MM-DD-HH.mp3 → 存档文件（支持 HTTP Range seek）
+- **零配置启动** — 自动检测或下载指定版本的 ffmpeg，无需手动安装
+- **双入口推流** — 兼容 ffmpeg / VLC 命令行 PUT，也支持 Web 界面拖拽上传
+- **实时收听** — `/stream`、`/live.mp3` 双 URL，浏览器和 Icecast 客户端均可播放
+- **自动存档** — 持续推流时按整点切片为 MP3，支持回放最近 N 天
+- **管理界面** — 状态面板、歌单管理、听众日志、ffmpeg 下载进度
+- **插件化架构** — 服务端能力全部位于 `@radio-services/plugins/*`，启动时自动发现
 
----
-
-## 配置说明
-
-### YAML 配置文件
-
-所有配置项均在 `config/config.yaml` 中管理：
-
-| 配置项 | 默认值 | 说明 |
-|---|---|---|
-| `server.host` | `"0.0.0.0"` | 监听地址 |
-| `server.port` | `8000` | 监听端口 |
-| `auth.sourcePassword` | `"hackme"` | 推流鉴权密码 |
-
-> **⚠️ SECURITY**: Always change `auth.sourcePassword` from the default value
-> (`hackme`) before deploying. The server logs a warning on startup if the
-> default is detected, but this is a fail-open check — production deployments
-> should never rely on the default.
-| `ffmpeg.version` | `"7.1"` | ffmpeg 版本 |
-| `archive.retentionDays` | `7` | 存档保留天数 |
-| `archive.minFreeSpaceMB` | `500` | 磁盘空间警戒线 |
-
-### 环境变量
-
-暂不支持环境变量覆盖，所有配置通过 `config.yaml` 管理。
-
----
-
-## 测试
-
-### 运行所有测试
-
-```bash
-pnpm test
-```
-
-### 监听模式（开发时）
-
-```bash
-pnpm test:watch
-```
-
-### 类型检查
-
-```bash
-pnpm typecheck
-```
-
----
-
-## 故障排查
-
-### macOS 提示「无法打开，因为无法验证开发者」
-
-这是 Gatekeeper 安全机制。解决方法：
-
-1. 打开「系统设置」→「隐私与安全性」
-2. 滚动到下方，点击「仍要打开」
-3. 重新启动服务
-
-### ffmpeg 下载失败
-
-- 检查网络能否访问 GitHub（`https://github.com/BtbN/FFmpeg-Builds/releases`）
-- 或手动下载对应平台的 ffmpeg，放到 `bin/ffmpeg/current/` 目录
-- 确认文件名为 `ffmpeg`（macOS/Linux）或 `ffmpeg.exe`（Windows）
-
-### 端口 8000 被占用
-
-修改 `config/config.yaml` 中的 `server.port`，或找出占用进程：
-
-```bash
-# macOS / Linux
-lsof -i :8000
-
-# Windows
-netstat -ano | findstr :8000
-```
-
-### 推流失败（401 Unauthorized）
-
-确认推流命令中的密码与 `config.yaml` 中 `auth.sourcePassword` 一致。
-
-### 听众收听无声音
-
-- 确认推流正在进行中（管理界面状态栏显示「推流中」）
-- 确认浏览器/VLC 连接到的是正确的 URL
-- 尝试用 VLC 播放 `http://localhost:8000/live.mp3`
-
----
-
-## 协议兼容性
-
-radioServices 实现了 Icecast HTTP 流协议，兼容以下客户端：
-
-| 客户端 | 平台 | 推流 | 收听 |
-|---|---|---|---|
-| ffmpeg | macOS/Linux/Windows | 支持 | 支持 |
-| VLC | 全部 | 支持 | 支持 |
-| MPV | 全部 | 支持 | 支持 |
-| BUTT | macOS/Linux/Windows | 支持 | - |
-| Mixxx | 全部 | 支持 | - |
-| Safari / Chrome / Firefox | 全部 | - | 支持 |
-
-### 推荐推流命令
-
-```bash
-# 推流本地文件（单曲循环）
-./bin/ffmpeg/current/ffmpeg -stream_loop -1 -re -i your_audio.mp3 \
-  -c copy -f mp3 -content_type audio/mpeg \
-  http://localhost:8000/source
-
-# 推流麦克风输入（ macOS）
-./bin/ffmpeg/current/ffmpeg -f avfoundation -i ":0" \
-  -c:a libmp3lame -b:a 128k \
-  -f mp3 -content_type audio/mpeg \
-  http://localhost:8000/source
-
-# 推流远程流（如网络电台）
-./bin/ffmpeg/current/ffmpeg -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 \
-  -i "https://example.com/stream.mp3" \
-  -c copy -f mp3 -content_type audio/mpeg \
-  http://localhost:8000/source
-```
-
----
-
-## 路线图
-
-### v1.0 — 当前版本
-- 单频道 Icecast 流服务器
-- 自动 ffmpeg 安装
-- 按小时自动切片存档
-- Web 管理界面（状态/推流/回放/听众）
-- 歌单循环推流
-
-### v2.0
-- 多频道支持
-- 实时元数据（ICY metadata）
-- HTTPS 支持
-- Web 端录音功能
-
-### v3.0
-- Docker 部署
-- 多语言管理界面
-- 定时推流排程
-- API 令牌鉴权
-
----
-
-## 项目结构
+### 项目结构
 
 ```
 radioServices/
-├── src/
-│   ├── server.ts                # 入口
-│   ├── app.ts                   # Fastify 应用工厂
-│   ├── config.ts                # 配置加载
-│   ├── routes/                  # API 路由
-│   ├── services/                # 核心服务
-│   ├── db/                      # SQLite 数据层
-│   ├── web/                     # 前端 TS 源码
-│   └── utils/                   # 工具函数
-├── public/
-│   ├── index.html               # 听众落地页
-│   └── admin/                   # 管理界面
-├── bin/                         # 运行时数据（ffmpeg/歌单/存档）
-├── logs/                        # 运行时日志
-├── tests/                       # 单元测试 + 集成测试
-├── config/
-│   └── config.example.yaml      # 配置模板
-├── docs/
-│   └── superpowers/specs/       # 设计规格文档
-├── package.json
-├── tsconfig.json
-├── vitest.config.ts
+├── packages/
+│   ├── shared/          # @radio-services/shared      — 类型、配置、接口契约
+│   ├── core/            # @radio-services/core        — 服务、数据库、插件系统
+│   ├── server/          # @radio-services/server      — Fastify HTTP/WS 服务
+│   ├── web/             # @radio-services/web         — 浏览器管理界面打包产物
+│   └── plugins/
+│       ├── playlist/    # @radio-services/plugin-playlist
+│       ├── archive/     # @radio-services/plugin-archive
+│       ├── listeners/   # @radio-services/plugin-listeners
+│       └── ffmpeg/      # @radio-services/plugin-ffmpeg
+├── tests/               # 工作区根测试（vitest）
+├── bin/                 # 运行时数据：ffmpeg / 存档 / 上传
+├── config/              # config.example.yaml 配置模板
+├── docs/                # 设计规格 / 实施计划 / 参考资料
+├── pnpm-workspace.yaml
+├── tsconfig.base.json
 └── README.md
 ```
 
----
+### 架构图
 
-## 许可
+```
+┌──────────────────────────────────────────────────────────────┐
+│                   radioServices (Node.js)                    │
+│                                                              │
+│  ┌──────────┐     ┌────────────────┐     ┌──────────────┐   │
+│  │ ffmpeg / │────▶│  Source        │     │  Listener    │◀──┼─── 浏览器 / VLC
+│  │ 浏览器   │ PUT │  Receiver      │◀───▶│  Broadcaster │──▶│── 浏览器 / VLC
+│  └──────────┘     └───────┬────────┘     └──────────────┘   │
+│       │                   │                                 │
+│       │           ┌───────▼────────┐                        │
+│       │           │   Archiver     │（ffmpeg 插件）         │
+│       │           └───────┬────────┘                        │
+│       │                   │                                 │
+│       │           ┌───────▼────────┐                        │
+│       │           │ bin/archive/   │                        │
+│       │           │ YYYY-MM-DD-HH.mp3                       │
+│       │           └────────────────┘                        │
+│  ┌────────────────────────────────────────────────────────┐ │
+│  │  SQLite  (歌单 / 配置 / 听众日志)                       │ │
+│  └────────────────────────────────────────────────────────┘ │
+│  ┌────────────────────────────────────────────────────────┐ │
+│  │  Admin Web UI  (由 @radio-services/web 打包)            │ │
+│  └────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────┘
+                插件系统（@radio-services/core）
+                加载顺序：playlist / archive / listeners / ffmpeg
+```
 
-MIT License
+### 快速上手
+
+```bash
+# 1. 安装依赖（需要 pnpm 9+）
+pnpm install
+
+# 2. 初始化配置
+cp config/config.example.yaml config/config.yaml
+
+# 3. 先构建 shared 与 core（下游包依赖它们的 dist/）
+pnpm --filter @radio-services/shared build
+pnpm --filter @radio-services/core   build
+
+# 4. 启动开发服务（server 监听 :8000，web 用 esbuild --watch）
+pnpm dev
+# 也可并行启动所有包的 dev 脚本
+pnpm dev:all
+```
+
+首次启动时，`bin/ffmpeg/current/` 是空的。`ffmpeg` 插件会检查文件系统，
+回退到 GitHub 下载对应版本，校验 SHA-256 后解压到目标目录。Web 界面通过
+WebSocket 订阅下载进度，下载完成会自动刷新状态面板。
+
+### 推流音频
+
+**命令行推流（使用项目内 ffmpeg）**
+
+```bash
+./bin/ffmpeg/current/ffmpeg -re -i your_audio.mp3 \
+  -c copy -f mp3 -content_type audio/mpeg \
+  http://localhost:8000/source
+```
+
+**Web 界面上传**
+
+浏览器打开 `http://localhost:8000/admin`，进入「推流」标签页，拖拽上传音频文件，点击「立即推流」。
+
+默认推流密码为 `hackme`，可通过 `config.yaml` 的 `auth.sourcePassword`
+字段或环境变量 `RADIO_SOURCE_PASSWORD` 修改。
+
+### 收听
+
+- 浏览器：<http://localhost:8000/stream> 或 <http://localhost:8000/live.mp3>
+- VLC：`vlc http://localhost:8000/live.mp3`
+- 回放：访问 `/admin` 页面，进入「回放」标签页
+
+### 常用命令
+
+| 命令              | 作用                                                  |
+|-------------------|-------------------------------------------------------|
+| `pnpm install`    | 安装整个工作区的依赖                                   |
+| `pnpm dev`        | 仅启动 server（含 `tsx watch` 热重启）                |
+| `pnpm dev:all`     | 并行启动 server 与 web 的 watch                       |
+| `pnpm build`      | 每个包都执行 `tsc` 编译                               |
+| `pnpm start`      | 启动预先构建好的 server（`dist/server.js`）          |
+| `pnpm test`       | 运行所有测试（vitest）                                |
+| `pnpm typecheck`  | 每个包执行 `tsc --noEmit`                             |
+| `pnpm clean`      | 删除所有包下的 `dist/`                                |
+
+### 配置说明
+
+所有运行时配置位于 `config/config.yaml`：
+
+```yaml
+server:
+  host: "0.0.0.0"
+  port: 8000
+
+auth:
+  sourcePassword: "hackme"
+
+ffmpeg:
+  version: "7.1"
+  sourceUrl: "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest"
+
+archive:
+  directory: "bin/archive"
+  segmentDurationSec: 3600
+  retentionDays: 7
+
+playlist:
+  uploadDir: "bin/uploads"
+  maxFileSizeMB: 500
+  allowedExtensions: [".mp3", ".m4a", ".aac", ".ogg", ".wav", ".flac"]
+```
+
+支持的环境变量覆盖：
+
+- `RADIO_PORT` — 覆盖 `server.port`
+- `RADIO_HOST` — 覆盖 `server.host`
+- `RADIO_SOURCE_PASSWORD` — 覆盖 `auth.sourcePassword`
+- `RADIO_DB_PATH` — 覆盖 `db.path`
+
+> ⚠️ **安全提醒**：生产部署前请修改 `auth.sourcePassword`。启动时若使用默认值，服务器会在日志中打印警告，但这是 fail-open 检查，不应作为唯一防线。
+
+### 插件系统
+
+每个特性都是一个工作区包，位于 `packages/plugins/*`，并附带 `manifest.json`。启动时 discoverer 扫描该目录，loader 负责加载 `dist/index.js`（dev 模式由 tsx 加载 `src/index.ts`），registry 统一对外暴露 `Plugin` 实例。
+
+插件接口：
+
+```ts
+export default function createMyPlugin(): Plugin {
+  return {
+    name: 'my-plugin',
+    version: '0.1.0',
+    init(ctx) { /* 注册路由 / 服务 */ },
+    start() { /* 异步启动 */ },
+    stop() { /* 异步停止 */ },
+  }
+}
+```
+
+更详细的发现器 / 加载器 / 注册中心契约见
+[`packages/core/src/plugin-system`](packages/core/src/plugin-system)；
+可运行的样例见 [`packages/plugins`](packages/plugins)。
+
+### 故障排查
+
+| 症状                                 | 处理                                                                     |
+|--------------------------------------|--------------------------------------------------------------------------|
+| macOS Gatekeeper 阻止 ffmpeg 执行      | 系统设置 → 隐私与安全性 → 仍要打开                                       |
+| ffmpeg 下载失败                       | 检查 `github.com/BtbN` 的网络连通性，或手动放入 `bin/ffmpeg/current/`     |
+| 8000 端口被占用                       | 修改 `config.yaml` 中的 `server.port`                                    |
+| 推流返回 401                          | 密码不匹配：`auth.sourcePassword` 必须与推流端一致                       |
+| 听众收听无声音                       | 确认推流正在进行，检查浏览器 / VLC 连接的 URL                             |
+
+### 许可
+
+MIT

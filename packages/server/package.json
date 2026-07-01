@@ -18,10 +18,12 @@
     "@fastify/static": "^7.0.0",
     "@fastify/websocket": "^10.0.0",
     "fastify": "^4.28.0",
+    "js-yaml": "^4.1.0",
     "pino": "^9.4.0",
     "pino-roll": "^2.0.0"
   },
   "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.16.0",
     "@types/supertest": "^6.0.2",
     "supertest": "^7.0.0",

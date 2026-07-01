@@ -2,10 +2,8 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
-    "typeRoots": ["./src/types", "./node_modules/@types"],
-    "paths": {
-      "@radio-services/shared": ["../shared/src"]
-    }
+    "rootDir": "src",
+    "typeRoots": ["./src/types", "./node_modules/@types"]
   },
   "include": ["src/**/*"]
 }

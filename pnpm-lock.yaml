@@ -60,6 +60,9 @@ importers:
       '@radio-services/shared':
         specifier: workspace:*
         version: link:../../shared
+      pino:
+        specifier: ^9.4.0
+        version: 9.14.0
 
   packages/plugins/ffmpeg:
     dependencies:
@@ -75,6 +78,9 @@ importers:
       keyv-file:
         specifier: ^0.3.1
         version: 0.3.3
+      pino:
+        specifier: ^9.4.0
+        version: 9.14.0
 
   packages/plugins/listeners:
     dependencies:
@@ -134,6 +140,9 @@ importers:
       fastify:
         specifier: ^4.28.0
         version: 4.29.1
+      js-yaml:
+        specifier: ^4.1.0
+        version: 4.3.0
       pino:
         specifier: ^9.4.0
         version: 9.14.0
@@ -141,6 +150,9 @@ importers:
         specifier: ^2.0.0
         version: 2.2.0
     devDependencies:
+      '@types/js-yaml':
+        specifier: ^4.0.9
+        version: 4.0.9
       '@types/node':
         specifier: ^20.16.0
         version: 20.19.43

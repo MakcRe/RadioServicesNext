@@ -28,7 +28,8 @@ export default function createFFmpegPlugin(): Plugin {
     async init(ctx: PluginContext) {
       context = ctx
 
-      const binRoot = 'bin/ffmpeg'
+      const binRoot = ctx.config.ffmpeg.binRoot ?? 'bin/ffmpeg'
+      const ffmpegPathOverride = ctx.config.ffmpeg.ffmpegPathOverride
 
       const { createFfmpegRuntimeState, defaultStatePath } = await import('./services/ffmpeg-state.js')
       runtimeState = createFfmpegRuntimeState(defaultStatePath(binRoot))
@@ -37,6 +38,7 @@ export default function createFFmpegPlugin(): Plugin {
         binRoot,
         version: ctx.config.ffmpeg.version,
         downloadUrl: ctx.config.ffmpeg.sourceUrl,
+        ffmpegPathOverride,
         logger: ctx.logger as unknown as import('pino').Logger,
         runtimeState,
       })

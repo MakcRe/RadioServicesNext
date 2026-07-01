@@ -61,7 +61,7 @@ stream: { pollIntervalMs: 5000, pollIntervalMaxMs: 30000 }
 db: { path: "${join(tempDir, 't.db')}" }
 `,
   )
-  const built = await createApp({ configPath })
+  const built = await createApp({ configPath, binRoot })
   app = built.app
   await app.listen({ port: 0, host: '127.0.0.1' })
 })
@@ -172,7 +172,7 @@ describe('Restart survival: user selection is honored across buildApp()', () => 
     await app.close()
 
     // Rebuild from the SAME config + binRoot so .state.json is reused.
-    const rebuilt = await buildApp(configPath, { binRoot })
+    const rebuilt = await createApp({ configPath, binRoot })
     app = rebuilt.app
     await app.listen({ port: 0, host: '127.0.0.1' })
 

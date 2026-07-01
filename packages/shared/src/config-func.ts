@@ -9,6 +9,7 @@ import type {
   PlaylistConfig,
   LoggingConfig,
   StreamConfig,
+  DbConfig,
 } from './types/config.js'
 
 export type {
@@ -20,6 +21,7 @@ export type {
   PlaylistConfig,
   LoggingConfig,
   StreamConfig,
+  DbConfig,
 }
 
 const DEFAULTS: RadioConfig = {
@@ -28,6 +30,7 @@ const DEFAULTS: RadioConfig = {
   ffmpeg: {
     version: process.platform === 'darwin' ? '8.1' : '7.1',
     sourceUrl: 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest',
+    binRoot: 'bin/ffmpeg',
   },
   archive: {
     directory: 'bin/archive',
@@ -48,6 +51,9 @@ const DEFAULTS: RadioConfig = {
   stream: {
     pollIntervalMs: 5000,
     pollIntervalMaxMs: 30000,
+  },
+  db: {
+    path: 'data/app.db',
   },
 }
 

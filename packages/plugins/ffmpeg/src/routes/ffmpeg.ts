@@ -1,4 +1,4 @@
-import type { PluginContext, RouteOptions } from '@radio-services/shared'
+import type { PluginContext, RouteOptions, FastifyReply } from '@radio-services/shared'
 import { FFmpegManager } from '../services/ffmpeg-manager.js'
 import type { WsHub } from '@radio-services/core'
 import type { FfmpegRuntimeState } from '../services/ffmpeg-state.js'
@@ -41,12 +41,12 @@ export function registerFfmpegRoutes(
     {
       method: 'POST',
       url: '/api/ffmpeg/download',
-      handler: async (body: unknown) => {
-        const { version } = (body as { version?: string }) ?? {}
-        deps.ffmpegManager.triggerDownload(version).catch((err) =>
+      handler: async (request) => {
+        const body = (request.body as { version?: string }) ?? {}
+        deps.ffmpegManager.triggerDownload(body.version).catch((err) =>
           ctx.logger.error('[ffmpeg trigger] ' + String(err))
         )
-        return { ok: true, version: version ?? null }
+        return { ok: true, version: body.version ?? null }
       }
     },
     {
@@ -111,14 +111,15 @@ export function registerFfmpegRoutes(
     {
       method: 'POST',
       url: '/api/ffmpeg/select',
-      handler: async (body: unknown) => {
-        const { version } = body as { version?: string }
-        if (!version) {
-          throw new Error('version 必填')
+      handler: async (request, reply: FastifyReply) => {
+        const body = request.body as { version?: string }
+        if (!body.version) {
+          return reply.status(400).send({ success: false, message: 'version 必填' })
         }
+        const version = body.version
         const versions = await deps.ffmpegManager.listVersions()
         if (!versions.includes(version)) {
-          throw new Error(`版本 ${version} 不存在`)
+          return reply.status(400).send({ success: false, message: `版本 ${version} 不存在` })
         }
         await deps.runtimeState.setSelectedVersion(version)
         const status = await deps.ffmpegManager.setVersion(version)

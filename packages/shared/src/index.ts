@@ -22,7 +22,7 @@ export {
 export * from './constants/index.js';
 
 // Interfaces - shared types
-export type { RouteOptions, WsHandler, EventHandler, Logger } from './interfaces/plugin-types.js';
+export type { RouteOptions, WsHandler, EventHandler, Logger, FastifyRequest, FastifyReply } from './interfaces/plugin-types.js';
 // Plugin interface (references PluginContext)
 export type { Plugin, HealthStatus, DiscoveredPlugin } from './interfaces/plugin.js';
 // PluginContext

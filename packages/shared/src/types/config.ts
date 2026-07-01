@@ -10,6 +10,8 @@ export interface AuthConfig {
 export interface FfmpegConfig {
   version: string;
   sourceUrl: string;
+  binRoot?: string;
+  ffmpegPathOverride?: string;
 }
 
 export interface ArchiveConfig {
@@ -36,6 +38,10 @@ export interface StreamConfig {
   pollIntervalMaxMs: number;
 }
 
+export interface DbConfig {
+  path: string;
+}
+
 export interface RadioConfig {
   server: ServerConfig;
   auth: AuthConfig;
@@ -44,4 +50,5 @@ export interface RadioConfig {
   playlist: PlaylistConfig;
   logging: LoggingConfig;
   stream: StreamConfig;
+  db?: DbConfig;
 }

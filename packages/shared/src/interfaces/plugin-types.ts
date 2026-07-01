@@ -1,7 +1,19 @@
+// Fastify-compatible handler types (avoid importing fastify to keep shared package dependency-free)
+export type FastifyRequest = {
+  body?: unknown;
+  params?: Record<string, string>;
+  query?: Record<string, string>;
+};
+
+export type FastifyReply = {
+  status: (code: number) => FastifyReply;
+  send: (data: unknown) => FastifyReply;
+};
+
 export interface RouteOptions {
   method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
   url: string;
-  handler: (...args: unknown[]) => unknown;
+  handler: (request: FastifyRequest, reply: FastifyReply) => unknown;
   schema?: Record<string, unknown>;
 }
 

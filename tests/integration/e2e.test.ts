@@ -88,7 +88,7 @@ beforeAll(async () => {
 
   const configPath = createTestConfig()
   ffmpegBin = fakeFfmpeg()
-  const { app: builtApp } = await createApp({ ffmpegBin })
+  const { app: builtApp } = await createApp({ configPath, ffmpegPathOverride: ffmpegBin })
   app = builtApp
   await app.listen({ port: 0, host: '127.0.0.1' })
 })

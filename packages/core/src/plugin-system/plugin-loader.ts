@@ -1,4 +1,5 @@
 import type { Plugin, DiscoveredPlugin } from '@radio-services/shared';
+import { join } from 'path';
 import { PluginRegistry } from './plugin-registry.js';
 import { PluginDiscoverer } from './plugin-discoverer.js';
 
@@ -25,8 +26,23 @@ export class PluginLoader {
   }
 
   async load(manifest: DiscoveredPlugin): Promise<Plugin> {
-    const module = await import(manifest.entry);
-    const plugin: Plugin = module.default ?? module;
+    const absolutePath = join(manifest.path, manifest.entry);
+    const module = await import(absolutePath);
+    
+    // Handle both direct plugin exports and factory function exports
+    let plugin: Plugin;
+    if (typeof module.default === 'function') {
+      // Factory function pattern: export default function createPlugin() { return {...} }
+      plugin = module.default();
+    } else if (module.default && typeof module.default === 'object') {
+      // Direct plugin object: export default {...}
+      plugin = module.default;
+    } else if (typeof module === 'object' && module !== null) {
+      // Named export pattern: export const plugin = {...}
+      plugin = module as unknown as Plugin;
+    } else {
+      throw new Error(`Cannot extract plugin from module: ${manifest.name}`);
+    }
 
     if (!this.validate(plugin)) {
       throw new Error(`Invalid plugin: ${manifest.name}`);

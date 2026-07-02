@@ -3,13 +3,15 @@
 **日期**：2026-07-02
 **目的**：跨会话交接 / 进度跟踪
 
+> ⚠️ **如果你是一个新对话的 AI，看到本文件**：请先完整读完本文档再行动，特别留意 [§已知差距](#已知差距monorepo-后未实现--回归) 和 [§BACKLOG](#known-gaps-–-where-the-work-lives)。本文档已包含当前会话 ID 之前的全部上下文（HEAD、commits、踩过的坑、未完成项），下一个动作应当紧接**§跨会话交接建议**的阅读顺序。
+
 ## 当前状态
 
 **Monorepo 重构 + 文档同步**：全部完成 ✅
 
 仓库已从单包项目（`src/`、`public/`、`tests/`）重构为 5 包 monorepo + 4 个内置插件，并通过文档同步让 README、HANDOFF 与新架构对齐。
 
-**HEAD**：`0c58b8f` · `pnpm test` 130 / 132 通过（2 个失败仅 FFmpeg 网络超时，与重构无关）· `pnpm typecheck` exit 0 · `pnpm dev:all` 正常启动，`/health` 与 `/api/status` 返回 200。
+**HEAD**：`962d0e5` · `pnpm test` 130 / 132 通过（2 个失败仅 FFmpeg 网络超时，与重构无关）· `pnpm typecheck` exit 0 · `pnpm dev:all` 正常启动，`/health` 与 `/api/status` 返回 200。
 
 设计稿与计划：
 
@@ -164,6 +166,25 @@ v1 → v1.3 的迭代成果都已迁移进新包，原始问题修复点见 git 
 
 详细修复建议、关联代码位置、测试覆盖缺口表，**见 `docs/superpowers/BACKLOG.md`**。该文档**应作为下一个会话的首要工作内容**。
 
+<a id="known-gaps-–-where-the-work-lives"></a>
+<a id="backlog-reference"></a>
+
+### 开工顺序建议（P0 必须先做）
+
+| # | 任务 | 阻塞谁 |
+|---|------|--------|
+| 1 | P0-1 + P2-11：server 挂 `public/` 静态，加 `@fastify/static` + `build:web:deploy` 脚本 | 管理后台与听众落地页 |
+| 2 | P0-2：`/api/ffmpeg/download/status` 改真 SSE | FFmpeg 下载 UI |
+| 3 | P1-3：`app.ts` 调 `plugin.start()`、`server.ts` shutdown 调 `plugin.stop()` | archive / ffmpeg 句柄泄漏 |
+| 4 | P1-6：`/api/source/stop` 调 `broadcaster.endAll()`（broadcast 注册为 plugin 服务） | 切歌韧性 |
+| 5 | P1-4：`/api/archive/:filename` Range + 206 | Archive 跳进度 |
+| 6 | P1-5：`/api/listeners/history` `Number()` → `parsePositiveId()` | 输入校验 |
+| 7 | P2-7 / P2-8：playlist `loop` 端点 + worker 调 `nextSong()` / `popFirst()` | 循环推流 |
+| 8 | P2-9：server 暴露 `/ws` 透传 `wsHub` 事件 | 实时状态推送 |
+| 9 | P2-10：`/api/ffmpeg/upgrade` 合并进 `/download` | API 卫生 |
+
+**P0 不通之前不要回头改 UI 细节**。
+
 ## 测试 / 质量
 
 | 指标 | 数值 |
@@ -193,3 +214,19 @@ v1 → v1.3 的迭代成果都已迁移进新包，原始问题修复点见 git 
 需要查询先前对话的完整决策记录时，可在 `agent-transcripts/` 中查找。
 
 旧版本 HANDOFF（v1.1 收尾时）归档于 `git log -p docs/superpowers/HANDOFF.md`（HEAD~4 之前的版本）。
+
+## 新对话开局的"召唤词"模板
+
+新对话的 AI **不会自动**读 HANDOFF 或 BACKLOG，必须由你在第一条消息里调用。建议把下面这段复制粘贴成新会话的 kickoff 消息：
+
+```
+你好。请按顺序读：
+1) docs/superpowers/HANDOFF.md
+2) docs/superpowers/BACKLOG.md
+
+本会话的待办是 BACKLOG.md 的项目 #<填编号>（按 HANDOFF 里
+"开工顺序建议"表的顺序填）。请先复述你对这两份文档的理解，
+确认后再动手。
+```
+
+替换 `<填编号>` 为开工事项（P0-1 / P0-2 / P1-3 …），或直接说"按开工顺序从第 1 项开始"逐项推进。

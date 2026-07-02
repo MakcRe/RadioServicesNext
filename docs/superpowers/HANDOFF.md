@@ -7,11 +7,11 @@
 
 ## 当前状态
 
-**Monorepo 重构 + 文档同步 + P0-1/P2-11 修复**：全部完成 ✅
+**Monorepo 重构 + 文档同步 + P0-1/P2-11 + P0-2 修复**：全部完成 ✅
 
-仓库已从单包项目（`src/`、`public/`、`tests/`）重构为 5 包 monorepo + 4 个内置插件，并通过文档同步让 README、HANDOFF 与新架构对齐。本轮还完成了 BACKLOG 开工顺序第 1 项（P0-1 + P2-11：server 挂 `@fastify/static` serve `public/`，新增 `build:web:deploy` 脚本）。
+仓库已从单包项目（`src/`、`public/`、`tests/`）重构为 5 包 monorepo + 4 个内置插件，并通过文档同步让 README、HANDOFF 与新架构对齐。本会话还完成了 BACKLOG 开工顺序第 2 项（P0-2：`/api/ffmpeg/download/status` 改为真 SSE，向 FFmpegManager 'download' 事件转发，初始 `idle` 帧 + `retry: 5000`，客户端断开双订阅清理，无 listener 泄漏）。
 
-**HEAD**：`962d0e5` · `pnpm test` 130 / 132 通过（2 个失败仅 FFmpeg 网络超时，与重构无关）· `pnpm typecheck` exit 0 · `pnpm dev:all` 正常启动，`/health` 与 `/api/status` 返回 200。
+**HEAD**：`0995e1c` · `pnpm test` 143 / 146 通过（3 个失败为 `ffmpeg-manager.test.ts` 网络限制环境问题，HANDOFF 已知与重构无关）· `pnpm -r typecheck` exit 0 · `pnpm dev:all` 正常启动，`/health` 与 `/api/status` 返回 200，`/api/ffmpeg/download/status` 返回真 SSE。
 
 设计稿与计划：
 
@@ -147,7 +147,7 @@ v1 → v1.3 的迭代成果都已迁移进新包，原始问题修复点见 git 
 ### P0（阻塞管理后台与下载 UX）
 
 1. ✅ **`/admin` 静态资源已挂载**：`packages/server/src/app.ts` 引入 `@fastify/static`（`resolvePath(__dirname, '../../../public')`），加 `build:web:deploy` 脚本同步 `public/admin/{app.js,app.css}`。6 个 E2E 用例覆盖 `GET /`、`/admin`、`/admin/index.html`、`/admin/app.js`、`/admin/app.css` + 404 回归 + cwd 无关回归。
-2. **`/api/ffmpeg/download/status` 不是 SSE**：handler 只返回 `{state:'idle'}` JSON，但前端用 `EventSource()` 订阅，下载进度条不动。这是 v1.1 HANDOFF §B7-14 写过要修的 bug，没有真正修。
+2. ✅ **`/api/ffmpeg/download/status` 改为真 SSE**：抽出 `attachDownloadStatusSse()`（`packages/plugins/ffmpeg/src/routes/ffmpeg.ts`），手写 SSE 帧：headers `Content-Type: text/event-stream` + `Cache-Control: no-cache, no-transform` + `Connection: keep-alive` + `X-Accel-Buffering: no`；初始一帧 `{state:'idle'}` 加 `retry: 5000`；订阅 `FFmpegManager.on('download', …)` 转发所有进度事件；客户端断开通过 `request.raw` 与 `reply.raw` 双订阅清理（Fastify hijack 后生命周期模糊，两边都监保险），调用 `reply.hijack()` 时 `.bind(reply)` 保住 `this`（v1 初次实现漏 bind，hijack 内 `Symbol(fastify.reply.hijacked)` 写入 `this` 为 undefined，已修复）。前端 `EventSource('/api/ffmpeg/download/status')` 现能收到 `downloading/verifying/extracting/complete/error` 全套状态。6 个单元测试 + 1 个 e2e 烟测（`tests/integration/ffmpeg-download-sse.test.ts`）。
 
 ### P1（v1.1 已修过、monorepo 化后回归）
 
@@ -173,8 +173,8 @@ v1 → v1.3 的迭代成果都已迁移进新包，原始问题修复点见 git 
 
 | # | 任务 | 阻塞谁 |
 |---|------|--------|
-| 1 | P0-1 + P2-11：server 挂 `public/` 静态，加 `@fastify/static` + `build:web:deploy` 脚本 | 管理后台与听众落地页 |
-| 2 | P0-2：`/api/ffmpeg/download/status` 改真 SSE | FFmpeg 下载 UI |
+| 1 | ✅ P0-1 + P2-11：server 挂 `public/` 静态，加 `@fastify/static` + `build:web:deploy` 脚本 | 管理后台与听众落地页 |
+| 2 | ✅ P0-2：`/api/ffmpeg/download/status` 改真 SSE | FFmpeg 下载 UI |
 | 3 | P1-3：`app.ts` 调 `plugin.start()`、`server.ts` shutdown 调 `plugin.stop()` | archive / ffmpeg 句柄泄漏 |
 | 4 | P1-6：`/api/source/stop` 调 `broadcaster.endAll()`（broadcast 注册为 plugin 服务） | 切歌韧性 |
 | 5 | P1-4：`/api/archive/:filename` Range + 206 | Archive 跳进度 |
@@ -189,8 +189,8 @@ v1 → v1.3 的迭代成果都已迁移进新包，原始问题修复点见 git 
 
 | 指标 | 数值 |
 |------|------|
-| 测试用例 | 132 个（`tests/` + `packages/*/`），130 通过，2 失败 |
-| 失败测试 | `ffmpeg-manager.test.ts` 2 个 — 均为实际下载超时，环境问题，与重构无关 |
+| 测试用例 | 146 个（`tests/` + `packages/*/`），143 通过，3 失败 |
+| 失败测试 | `ffmpeg-manager.test.ts` 3 个 — 均为实际下载超时，沙盒网络限制下 `www.osxexperts.net` 不可达，HANDOFF 已知与重构无关 |
 | 类型检查 | `pnpm -r typecheck` exit 0 |
 | 构建 | `pnpm -r build` 8 个包全部通过 |
 | 启动 | `pnpm dev:all` server + web 并行运行 |

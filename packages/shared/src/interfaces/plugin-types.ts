@@ -1,8 +1,24 @@
 // Fastify-compatible handler types (avoid importing fastify to keep shared package dependency-free)
+export interface FastifyRawSocket {
+  on(event: 'close' | 'end' | 'error' | 'data', listener: (...args: unknown[]) => void): unknown
+}
+
+export interface FastifyRawRequest {
+  on(event: 'close' | 'end' | 'error' | 'data', listener: (...args: unknown[]) => void): unknown
+  socket?: FastifyRawSocket
+}
+
 export type FastifyRequest = {
   body?: unknown;
   params?: Record<string, string>;
   query?: Record<string, string>;
+  headers?: Record<string, string | string[] | undefined>;
+  /**
+   * Underlying Node IncomingMessage. Only populated by routes that need
+   * access to long-lived connection events (SSE, streaming uploads).
+   * Type-narrowed via the `FastifyRawRequest` shape above.
+   */
+  raw?: FastifyRawRequest;
 };
 
 export type FastifyReply = {

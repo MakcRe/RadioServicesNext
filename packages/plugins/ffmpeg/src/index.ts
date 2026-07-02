@@ -15,6 +15,8 @@ import {
 
 export { FFmpegManager, buildDownloadUrl, downloadFfmpeg, resolveLatestFfmpegVersion, listLatestRemoteVersions, verifySha256, normalizeVersion }
 export type { DownloadState, ProgressCallback }
+export { attachDownloadStatusSse } from './routes/ffmpeg.js'
+export type { SseStream, SseDeps } from './routes/ffmpeg.js'
 
 export default function createFFmpegPlugin(): Plugin {
   let ffmpegManager: FFmpegManager

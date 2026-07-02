@@ -5,6 +5,66 @@ import type { FfmpegRuntimeState } from '../services/ffmpeg-state.js'
 import { createReadStream } from 'fs'
 import { join, basename } from 'path'
 
+/** Minimal surface needed by the SSE download-status handler. */
+export interface SseStream {
+  writeHead: (status: number, headers?: Record<string, string | number>) => void
+  write: (chunk: string) => boolean
+  on: (event: 'close' | 'error', listener: () => void) => void
+  off: (event: 'close' | 'error', listener: () => void) => void
+}
+
+export interface SseDeps {
+  ffmpegManager: Pick<FFmpegManager, 'on' | 'off'>
+  rawRequest: SseStream
+  rawReply: SseStream
+  hijack: () => void
+}
+
+/**
+ * Attach an SSE stream of FFmpeg download progress to the response.
+ *
+ * The single source of truth is the FFmpegManager's 'download' event;
+ * we forward each emission to the client and unhook the subscription
+ * when the client disconnects (via either the request or the response
+ * close event, since the Fastify hijack leaves the lifecycle ambiguous).
+ */
+export function attachDownloadStatusSse(deps: SseDeps): void {
+  const { ffmpegManager, rawRequest, rawReply, hijack } = deps
+  hijack()
+  rawReply.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no', // disable proxy buffering
+  })
+  rawReply.write('retry: 5000\n\n')
+  // Initial frame so the client doesn't sit on a half-open stream.
+  // If a download is already in flight we still start with `idle`; the
+  // next 'download' event will arrive on the manager's bus as usual.
+  rawReply.write(`data: ${JSON.stringify({ state: 'idle' })}\n\n`)
+
+  const forward = (payload: unknown): void => {
+    try {
+      rawReply.write(`data: ${JSON.stringify(payload)}\n\n`)
+    } catch {
+      cleanup()
+    }
+  }
+  const onDownload = (state: unknown): void => forward(state)
+  const cleanup = (): void => {
+    ffmpegManager.off('download', onDownload)
+    rawRequest.off('close', cleanup)
+    rawReply.off('close', cleanup)
+  }
+  ffmpegManager.on('download', onDownload)
+  // Listen on BOTH the request and the response: depending on the
+  // direction of the disconnect and whether the handler has been
+  // hijacked, only one of these may fire. Belt-and-braces keeps the
+  // EventEmitter clean.
+  rawRequest.on('close', cleanup)
+  rawReply.on('close', cleanup)
+}
+
 function relativizePath(absPath: string, binRoot: string): string {
   if (!absPath.startsWith(binRoot)) return absPath
   const idx = absPath.lastIndexOf('ffmpeg/')
@@ -40,8 +100,25 @@ export function registerFfmpegRoutes(
     {
       method: 'GET',
       url: '/api/ffmpeg/download/status',
-      handler: async () => {
-        return { state: 'idle' }
+      handler: async (request, reply) => {
+        // Server-Sent Events stream of FFmpeg download progress. Frontend
+        // subscribes via `new EventSource('/api/ffmpeg/download/status')` —
+        // the admin UI's "下载 FFmpeg" button relies on this to show
+        // progress (BACKLOG P0-2). All the work lives in
+        // attachDownloadStatusSse (kept separate for unit-testability).
+        const rawReply = (reply as unknown as { raw: SseStream }).raw
+        const rawRequest = (request as unknown as { raw: SseStream }).raw
+        // NB: must bind `reply` so the Fastify Reply prototype method keeps
+        // its `this`. Stashing the unbound reference and calling it later
+        // makes `this` undefined inside hijack(), which then blows up trying
+        // to set Symbol(fastify.reply.hijacked).
+        const hijack = (reply as unknown as { hijack: () => void }).hijack.bind(reply)
+        attachDownloadStatusSse({
+          ffmpegManager: deps.ffmpegManager,
+          rawRequest,
+          rawReply,
+          hijack,
+        })
       }
     },
     {

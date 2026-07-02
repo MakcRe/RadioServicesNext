@@ -11,6 +11,7 @@
     "dev:all": "pnpm -r --parallel dev",
     "build": "pnpm -r build",
     "build:web": "pnpm --filter @radio-services/web build",
+    "build:web:deploy": "pnpm build:web && cp packages/web/dist/app.js packages/web/dist/app.css public/admin/",
     "build:server": "pnpm --filter @radio-services/server build",
     "start": "pnpm --filter @radio-services/server start",
     "test": "vitest run",

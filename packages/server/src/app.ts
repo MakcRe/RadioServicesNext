@@ -1,7 +1,8 @@
 import Fastify from 'fastify';
 import multipart from '@fastify/multipart';
 import websocket from '@fastify/websocket';
-import { join, dirname } from 'path';
+import fastifyStatic from '@fastify/static';
+import { join, dirname, resolve as resolvePath } from 'path';
 import { fileURLToPath } from 'url';
 import { PassThrough } from 'stream';
 import type { RadioConfig } from '@radio-services/shared';
@@ -65,6 +66,23 @@ export async function createApp(deps: CreateAppDeps = {}): Promise<{ app: AnyFas
 
   await fastify.register(multipart);
   await fastify.register(websocket);
+
+  // Serve static files from <repo-root>/public/ (BACKLOG P0-1 + P2-11).
+  // Must be registered before any catch-all route; @fastify/static only
+  // responds when a matching file exists, otherwise it calls next() and
+  // other handlers (API routes, 404) take over.
+  //
+  // The path is resolved relative to this source file rather than process.cwd()
+  // because `pnpm --filter @radio-services/server dev` runs server with cwd =
+  // packages/server, not the monorepo root. Layout:
+  //   <repo-root>/packages/server/src/app.ts   (this file)
+  //   <repo-root>/public/                      (3 levels up)
+  const publicDir = resolvePath(__dirname, '..', '..', '..', 'public');
+  await fastify.register(fastifyStatic, {
+    root: publicDir,
+    prefix: '/',
+    index: ['index.html'],
+  });
 
   const registry = new PluginRegistry();
   const loader = new PluginLoader(registry);

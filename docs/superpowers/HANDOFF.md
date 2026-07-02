@@ -7,9 +7,9 @@
 
 ## 当前状态
 
-**Monorepo 重构 + 文档同步**：全部完成 ✅
+**Monorepo 重构 + 文档同步 + P0-1/P2-11 修复**：全部完成 ✅
 
-仓库已从单包项目（`src/`、`public/`、`tests/`）重构为 5 包 monorepo + 4 个内置插件，并通过文档同步让 README、HANDOFF 与新架构对齐。
+仓库已从单包项目（`src/`、`public/`、`tests/`）重构为 5 包 monorepo + 4 个内置插件，并通过文档同步让 README、HANDOFF 与新架构对齐。本轮还完成了 BACKLOG 开工顺序第 1 项（P0-1 + P2-11：server 挂 `@fastify/static` serve `public/`，新增 `build:web:deploy` 脚本）。
 
 **HEAD**：`962d0e5` · `pnpm test` 130 / 132 通过（2 个失败仅 FFmpeg 网络超时，与重构无关）· `pnpm typecheck` exit 0 · `pnpm dev:all` 正常启动，`/health` 与 `/api/status` 返回 200。
 
@@ -146,7 +146,7 @@ v1 → v1.3 的迭代成果都已迁移进新包，原始问题修复点见 git 
 
 ### P0（阻塞管理后台与下载 UX）
 
-1. **`/admin` 静态资源未挂载**：`packages/server/src/app.ts` 没装 `@fastify/static`，管理后台浏览器打不开。`packages/web/dist/` 也没脚本 copy 到 `public/admin/`。
+1. ✅ **`/admin` 静态资源已挂载**：`packages/server/src/app.ts` 引入 `@fastify/static`（`resolvePath(__dirname, '../../../public')`），加 `build:web:deploy` 脚本同步 `public/admin/{app.js,app.css}`。6 个 E2E 用例覆盖 `GET /`、`/admin`、`/admin/index.html`、`/admin/app.js`、`/admin/app.css` + 404 回归 + cwd 无关回归。
 2. **`/api/ffmpeg/download/status` 不是 SSE**：handler 只返回 `{state:'idle'}` JSON，但前端用 `EventSource()` 订阅，下载进度条不动。这是 v1.1 HANDOFF §B7-14 写过要修的 bug，没有真正修。
 
 ### P1（v1.1 已修过、monorepo 化后回归）
@@ -162,7 +162,7 @@ v1 → v1.3 的迭代成果都已迁移进新包，原始问题修复点见 git 
 8. **`PlaylistService.nextSong()` / `popFirst()` 死代码**：设计成循环推流作业者，但全工程无调用方。
 9. **WS 推送无人调用**：`PluginContext.registerWsHandler()` 没人调，`/ws` 实际连不上，前端 `wsClient` 超时。
 10. **ffmpeg 路由重复**：`/api/ffmpeg/upgrade` 与 `/api/ffmpeg/download` 行为重复，应合并。
-11. **`public/index.html` 落地页无法走 8000 访问**：与 #1 同一根因 —— server 不 serve `public/`。
+11. ✅ **`public/index.html` 落地页可走 8000 访问**：随 P0-1 一起修。`GET /` → 200 + `public/index.html`。
 
 详细修复建议、关联代码位置、测试覆盖缺口表，**见 `docs/superpowers/BACKLOG.md`**。该文档**应作为下一个会话的首要工作内容**。
 

@@ -14,6 +14,7 @@ let archiveDir: string
 let uploadDir: string
 let dbPath: string
 let ffmpegBin: string
+let configPath: string
 
 function fakeFfmpeg(): string {
   const dir = join(tempDir, 'ffbin')
@@ -86,7 +87,7 @@ beforeAll(async () => {
   mkdirSync(archiveDir, { recursive: true })
   mkdirSync(uploadDir, { recursive: true })
 
-  const configPath = createTestConfig()
+  configPath = createTestConfig()
   ffmpegBin = fakeFfmpeg()
   const { app: builtApp } = await createApp({ configPath, ffmpegPathOverride: ffmpegBin })
   app = builtApp
@@ -427,5 +428,88 @@ describe('E2E: Source-switch resilience (HANDOFF B7)', () => {
 
     destroyListener()
     await listenerPromise
+  })
+})
+
+describe('E2E: Static assets (BACKLOG P0-1 + P2-11)', () => {
+  it('serves the listener landing page at GET /', async () => {
+    const res = await request(app.server).get('/')
+    expect(res.status).toBe(200)
+    expect(res.headers['content-type']).toMatch(/text\/html/)
+    expect(res.text).toContain('radioServices')
+    expect(res.text).toContain('/stream')
+  })
+
+  it('serves the admin shell at GET /admin', async () => {
+    const res = await request(app.server).get('/admin')
+    expect(res.status).toBe(200)
+    expect(res.headers['content-type']).toMatch(/text\/html/)
+    expect(res.text).toContain('Radio Services 管理后台')
+  })
+
+  it('serves the admin shell at GET /admin/index.html', async () => {
+    const res = await request(app.server).get('/admin/index.html')
+    expect(res.status).toBe(200)
+    expect(res.headers['content-type']).toMatch(/text\/html/)
+  })
+
+  it('serves the admin bundle at GET /admin/app.js', async () => {
+    const res = await request(app.server)
+      .get('/admin/app.js')
+      .buffer(true)
+      .parse((r, cb) => {
+        const chunks: Buffer[] = []
+        r.on('data', (c: Buffer) => chunks.push(c))
+        r.on('end', () => cb(null, Buffer.concat(chunks)))
+      })
+    expect(res.status).toBe(200)
+    expect(res.headers['content-type']).toMatch(/application\/javascript|text\/javascript/)
+    expect(res.body.length).toBeGreaterThan(0)
+  })
+
+  it('serves the admin stylesheet at GET /admin/app.css', async () => {
+    const res = await request(app.server)
+      .get('/admin/app.css')
+      .buffer(true)
+      .parse((r, cb) => {
+        const chunks: Buffer[] = []
+        r.on('data', (c: Buffer) => chunks.push(c))
+        r.on('end', () => cb(null, Buffer.concat(chunks)))
+      })
+    expect(res.status).toBe(200)
+    expect(res.headers['content-type']).toMatch(/text\/css/)
+    expect(res.body.length).toBeGreaterThan(0)
+  })
+
+  it('returns 404 for paths that match no static file and no API route (no static-serve regression)', async () => {
+    const res = await request(app.server).get('/totally-nonexistent-path-xyz')
+    expect(res.status).toBe(404)
+  })
+})
+
+describe('E2E: Static assets are cwd-independent (BACKLOG P0-1 + P2-11 regression)', () => {
+  // When `pnpm --filter @radio-services/server dev` runs the server, the
+  // working directory is packages/server/ — NOT the monorepo root. Static
+  // serving must resolve the public/ directory relative to the source file,
+  // not process.cwd(). This test simulates that by spawning a second app
+  // with cwd set to a subdirectory.
+  it('serves /admin/app.js even when process.cwd() is a non-repo subdirectory', async () => {
+    const subDir = mkdtempSync(join(tmpdir(), 'radio-cwd-'))
+    const originalCwd = process.cwd()
+    try {
+      process.chdir(subDir)
+      const { app: app2 } = await createApp({ configPath, ffmpegPathOverride: ffmpegBin })
+      await app2.listen({ port: 0, host: '127.0.0.1' })
+      try {
+        const res = await request(app2.server).get('/admin/app.js')
+        expect(res.status).toBe(200)
+        expect(res.headers['content-type']).toMatch(/application\/javascript|text\/javascript/)
+      } finally {
+        await app2.close()
+      }
+    } finally {
+      process.chdir(originalCwd)
+      rmSync(subDir, { recursive: true, force: true })
+    }
   })
 })
